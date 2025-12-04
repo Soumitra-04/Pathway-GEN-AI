@@ -21,3 +21,10 @@ A GenAI-powered system that helps users build their personal brand — including
 ## 🚀 Next Steps (Day 2)
 - Finalize JSON structure
 - Write Groq master prompt
+- Test on Groq Playground
+- Created:1.pages\api\generateBrand\route.ts
+        2.Created API KEY
+
+## DAY 3
+- JSON master prompt Fal.ai
+- SETUP API ROUTING AND TEST
