@@ -1,26 +1,15 @@
-function buildGroqPrompt({
-  brandName,
-  idea,
-  targetAudience,
-  tone,
-  industry,
-}: {
-  brandName?: string;
-  idea: string;
-  targetAudience: string;
-  tone: string;
-  industry?: string;
-}): string {
-  return `
+import { NextResponse } from "next/server";
+
+/* -------------------------
+   MASTER PROMPT (STATIC)
+------------------------- */
+const MASTER_PROMPT = `
 You are a Brand & Business Strategy Generator AI.
-
 Your ONLY job is to return a single JSON object in the exact structure described below.
-Do NOT add explanations, markdown, or any text outside the JSON.
-Do NOT wrap the JSON in \`\`\` or any other fencing.
-Do NOT include comments.
+Do NOT add explanations, markdown, comments, or anything outside the JSON.
+Do NOT wrap the JSON in backticks.
 
-JSON structure you must follow:
-
+JSON structure you must return:
 {
   "business": {
     "summary": "string",
@@ -61,7 +50,21 @@ JSON structure you must follow:
     ],
     "reelScripts": ["string"],
     "contentPlan15Days": [
-      { "day": 1, "idea": "string" }
+      { "day": 1, "idea": "string" },
+      { "day": 2, "idea": "string" },
+      { "day": 3, "idea": "string" },
+      { "day": 4, "idea": "string" },
+      { "day": 5, "idea": "string" },
+      { "day": 6, "idea": "string" },
+      { "day": 7, "idea": "string" },
+      { "day": 8, "idea": "string" },
+      { "day": 9, "idea": "string" },
+      { "day": 10, "idea": "string" },
+      { "day": 11, "idea": "string" },
+      { "day": 12, "idea": "string" },
+      { "day": 13, "idea": "string" },
+      { "day": 14, "idea": "string" },
+      { "day": 15, "idea": "string" }
     ],
     "campaignIdeas": ["string"]
   },
@@ -71,33 +74,98 @@ JSON structure you must follow:
   }
 }
 
-FILLING RULES:
-- ALWAYS return ALL keys shown above.
-- "nameOptions" must contain 3–5 unique brand name ideas.
-- "taglineOptions" must contain 3–5 strong, marketing-ready taglines.
-- "painPoints" must list at least 3 real customer pain points.
-- "revenueModels" and "pricingIdeas" must each include 2–4 realistic options.
-- "colorPalette" must include 3–5 colors with valid HEX codes (example: "#FF5733") and clear usage descriptions.
-- "fontSuggestions" must include at least one "heading" font and one "body" font.
-- "socialPosts" must include 3–5 posts for different platforms (Instagram, LinkedIn, X, etc.).
-- "reelScripts" must include 1–3 short-form video ideas.
-- "contentPlan15Days" must include EXACTLY 10–15 high-quality content ideas, suitable for daily posting.
-- "campaignIdeas" must include 3–5 creative marketing or launch campaigns.
-- "logos.promptUsed" must be a clean, detailed prompt suitable for an AI image model to generate a minimal, modern logo.
-- "logos.imageUrls" must contain 1–3 placeholder or example logo URLs (e.g. "https://example.com/logo1.png").
-
-Now generate this JSON object for the following brand input:
-
-Brand name (can be empty if you want to suggest names): "${brandName ?? ""}"
-Business idea / description: "${idea}"
-Target audience: "${targetAudience}"
-Tone/style (e.g. playful, professional, bold, luxury): "${tone}"
-Industry: "${industry ?? ""}"
-
-REMEMBER:
-- RESPOND WITH RAW JSON ONLY.
-- NO explanations.
-- NO markdown.
-- NO comments.
+Now generate this JSON object using the input below:
+Brand name: "<<BRAND_NAME>>"
+Business idea: "<<IDEA>>"
+Target audience: "<<TARGET_AUDIENCE>>"
+Tone/style: "<<TONE>>"
+Industry: "<<INDUSTRY>>"
+Respond ONLY with valid JSON.
 `.trim();
+
+/* -------------------------
+   POST REQUEST HANDLER
+------------------------- */
+export async function POST(request: Request) {
+  try {
+    const body = await request.json();
+    const { idea, audience, tone, brandName, industry } = body;
+
+    if (!idea) return NextResponse.json({ error: "Idea is required" }, { status: 400 });
+
+    // Fill placeholders inside master prompt
+    const finalPrompt = MASTER_PROMPT
+      .replaceAll("<<BRAND_NAME>>", brandName || "")
+      .replaceAll("<<IDEA>>", idea)
+      .replaceAll("<<TARGET_AUDIENCE>>", audience || "")
+      .replaceAll("<<TONE>>", tone || "")
+      .replaceAll("<<INDUSTRY>>", industry || "");
+
+    /* -------------------------
+       CALL GROQ API
+------------------------- */
+    const groqResp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": Bearer ${process.env.GROQ_API_KEY}
+      },
+      body: JSON.stringify({
+        model: "mixtral-8x7b-32768",
+        messages: [{ role: "user", content: finalPrompt }],
+        temperature: 0.2,
+        max_tokens: 3500
+      })
+    });
+
+    const groqJson = await groqResp.json();
+    let raw = groqJson.choices[0].message.content.trim();
+
+    // Ensure JSON parses properly
+    let parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      const first = raw.indexOf("{");
+      const last = raw.lastIndexOf("}");
+      parsed = JSON.parse(raw.slice(first, last + 1));
+    }
+
+    /* -------------------------
+       LOGO GENERATION
+------------------------- */
+    const logoPrompt =
+      parsed.logos?.promptUsed ||
+      Minimal modern vector logo for ${brandName || parsed.branding?.nameOptions?.[0]} on clean background.;
+
+    let imageUrls = [
+      "https://via.placeholder.com/512?text=Logo1",
+      "https://via.placeholder.com/512?text=Logo2"
+    ];
+
+    if (process.env.FAL_API_KEY) {
+      const falResp = await fetch("https://fal.run/fal-ai/flux-lora", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": Key ${process.env.FAL_API_KEY}
+        },
+        body: JSON.stringify({ prompt: logoPrompt, num_images: 2 })
+      });
+
+      const falJson = await falResp.json().catch(() => null);
+      if (falJson?.images) imageUrls = falJson.images;
+    }
+
+    parsed.logos = {
+      promptUsed: logoPrompt,
+      imageUrls
+    };
+
+    return NextResponse.json(parsed, { status: 200 });
+
+  } catch (error: any) {
+    console.error("SERVER ERROR:", error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
 }
