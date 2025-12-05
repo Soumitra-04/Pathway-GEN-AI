@@ -44,11 +44,18 @@ function HomePage() {
                     industry
                 })
             });
-            const data = await res.json();
-            if (!res.ok) {
-                setError(data.error || "Something went wrong");
-            } else {
-                setResult(data);
+            const text = await res.text(); // read raw response
+            try {
+                const data = JSON.parse(text);
+                if (!res.ok) {
+                    setError(data.error || "Something went wrong");
+                } else {
+                    setResult(data);
+                }
+            } catch  {
+                // This means backend sent HTML (like the <!DOCTYPE error page)
+                console.error("Raw response from API:", text);
+                setError(`Backend returned non‑JSON response. First part: ${text.slice(0, 120)}...`);
             }
         } catch (err) {
             setError(err.message || "Network error");
@@ -67,7 +74,7 @@ function HomePage() {
                 children: "Pathway GEN AI – Brand Generator"
             }, void 0, false, {
                 fileName: "[project]/app/page.tsx",
-                lineNumber: 49,
+                lineNumber: 58,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -84,7 +91,7 @@ function HomePage() {
                         onChange: (e)=>setBrandName(e.target.value)
                     }, void 0, false, {
                         fileName: "[project]/app/page.tsx",
-                        lineNumber: 52,
+                        lineNumber: 61,
                         columnNumber: 9
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("textarea", {
@@ -94,7 +101,7 @@ function HomePage() {
                         rows: 3
                     }, void 0, false, {
                         fileName: "[project]/app/page.tsx",
-                        lineNumber: 57,
+                        lineNumber: 66,
                         columnNumber: 9
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("input", {
@@ -103,7 +110,7 @@ function HomePage() {
                         onChange: (e)=>setAudience(e.target.value)
                     }, void 0, false, {
                         fileName: "[project]/app/page.tsx",
-                        lineNumber: 63,
+                        lineNumber: 72,
                         columnNumber: 9
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("input", {
@@ -112,7 +119,7 @@ function HomePage() {
                         onChange: (e)=>setTone(e.target.value)
                     }, void 0, false, {
                         fileName: "[project]/app/page.tsx",
-                        lineNumber: 68,
+                        lineNumber: 77,
                         columnNumber: 9
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("input", {
@@ -121,7 +128,7 @@ function HomePage() {
                         onChange: (e)=>setIndustry(e.target.value)
                     }, void 0, false, {
                         fileName: "[project]/app/page.tsx",
-                        lineNumber: 73,
+                        lineNumber: 82,
                         columnNumber: 9
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -130,13 +137,13 @@ function HomePage() {
                         children: loading ? "Generating..." : "Generate Brand Strategy"
                     }, void 0, false, {
                         fileName: "[project]/app/page.tsx",
-                        lineNumber: 79,
+                        lineNumber: 88,
                         columnNumber: 9
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/app/page.tsx",
-                lineNumber: 51,
+                lineNumber: 60,
                 columnNumber: 7
             }, this),
             error && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -150,7 +157,7 @@ function HomePage() {
                 ]
             }, void 0, true, {
                 fileName: "[project]/app/page.tsx",
-                lineNumber: 85,
+                lineNumber: 94,
                 columnNumber: 9
             }, this),
             result && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("pre", {
@@ -163,13 +170,13 @@ function HomePage() {
                 children: JSON.stringify(result, null, 2)
             }, void 0, false, {
                 fileName: "[project]/app/page.tsx",
-                lineNumber: 91,
+                lineNumber: 100,
                 columnNumber: 9
             }, this)
         ]
     }, void 0, true, {
         fileName: "[project]/app/page.tsx",
-        lineNumber: 48,
+        lineNumber: 57,
         columnNumber: 5
     }, this);
 }

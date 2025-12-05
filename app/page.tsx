@@ -18,7 +18,7 @@ export default function HomePage() {
     setResult(null);
 
     try {
-      const res = await fetch("/api/generate", {
+            const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -30,13 +30,22 @@ export default function HomePage() {
         }),
       });
 
-      const data = await res.json();
+      const text = await res.text(); // read raw response
 
-      if (!res.ok) {
-        setError(data.error || "Something went wrong");
-      } else {
-        setResult(data);
+      try {
+        const data = JSON.parse(text);
+
+        if (!res.ok) {
+          setError(data.error || "Something went wrong");
+        } else {
+          setResult(data);
+        }
+      } catch {
+        // This means backend sent HTML (like the <!DOCTYPE error page)
+        console.error("Raw response from API:", text);
+        setError(`Backend returned non‑JSON response. First part: ${text.slice(0, 120)}...`);
       }
+
     } catch (err: any) {
       setError(err.message || "Network error");
     } finally {
