@@ -1,8 +1,5 @@
 import { NextResponse } from "next/server";
 
-/* -------------------------
-   MASTER PROMPT (STATIC)
-------------------------- */
 const MASTER_PROMPT = `
 You are a Brand & Business Strategy Generator AI.
 Your ONLY job is to return a single JSON object in the exact structure described below.
@@ -83,17 +80,15 @@ Industry: "<<INDUSTRY>>"
 Respond ONLY with valid JSON.
 `.trim();
 
-/* -------------------------
-   POST REQUEST HANDLER
-------------------------- */
 export async function POST(request: Request) {
   try {
     const body = await request.json();
     const { idea, audience, tone, brandName, industry } = body;
 
-    if (!idea) return NextResponse.json({ error: "Idea is required" }, { status: 400 });
+    if (!idea) {
+      return NextResponse.json({ error: "Idea is required" }, { status: 400 });
+    }
 
-    // Fill placeholders inside master prompt
     const finalPrompt = MASTER_PROMPT
       .replaceAll("<<BRAND_NAME>>", brandName || "")
       .replaceAll("<<IDEA>>", idea)
@@ -101,27 +96,46 @@ export async function POST(request: Request) {
       .replaceAll("<<TONE>>", tone || "")
       .replaceAll("<<INDUSTRY>>", industry || "");
 
-    /* -------------------------
-       CALL GROQ API
-------------------------- */
+    // ---------- CALL GROQ ----------
     const groqResp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${process.env.GROQ_API_KEY}`
+        "Authorization": `Bearer ${process.env.GROQ_API_KEY}`,
       },
       body: JSON.stringify({
         model: "mixtral-8x7b-32768",
         messages: [{ role: "user", content: finalPrompt }],
         temperature: 0.2,
-        max_tokens: 3500
-      })
+        max_tokens: 3500,
+      }),
     });
 
     const groqJson = await groqResp.json();
-    let raw = groqJson.choices[0].message.content.trim();
+    console.log("GROQ RAW JSON:", JSON.stringify(groqJson, null, 2));
 
-    // Ensure JSON parses properly
+    if (!groqResp.ok) {
+      // Groq returned an error object instead of choices[]
+      return NextResponse.json(
+        { error: "Groq API failed", details: groqJson },
+        { status: 500 }
+      );
+    }
+
+    const content = groqJson.choices?.[0]?.message?.content;
+    if (!content) {
+      return NextResponse.json(
+        {
+          error: "Groq response missing choices[0].message.content",
+          raw: groqJson,
+        },
+        { status: 500 }
+      );
+    }
+
+    let raw = content.trim();
+
+    // ---------- PARSE JSON FROM MODEL ----------
     let parsed;
     try {
       parsed = JSON.parse(raw);
@@ -131,16 +145,14 @@ export async function POST(request: Request) {
       parsed = JSON.parse(raw.slice(first, last + 1));
     }
 
-    /* -------------------------
-       LOGO GENERATION
-------------------------- */
+    // ---------- LOGO GENERATION ----------
     const logoPrompt =
       parsed.logos?.promptUsed ||
       `Minimal modern vector logo for ${brandName || parsed.branding?.nameOptions?.[0]} on clean background.`;
 
     let imageUrls = [
       "https://via.placeholder.com/512?text=Logo1",
-      "https://via.placeholder.com/512?text=Logo2"
+      "https://via.placeholder.com/512?text=Logo2",
     ];
 
     if (process.env.FAL_API_KEY) {
@@ -148,22 +160,23 @@ export async function POST(request: Request) {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Key ${process.env.FAL_API_KEY}`
+          "Authorization": `Key ${process.env.FAL_API_KEY}`,
         },
-        body: JSON.stringify({ prompt: logoPrompt, num_images: 2 })
+        body: JSON.stringify({ prompt: logoPrompt, num_images: 2 }),
       });
 
       const falJson = await falResp.json().catch(() => null);
-      if (falJson?.images) imageUrls = falJson.images;
+      if (falJson?.images) {
+        imageUrls = falJson.images;
+      }
     }
 
     parsed.logos = {
       promptUsed: logoPrompt,
-      imageUrls
+      imageUrls,
     };
 
     return NextResponse.json(parsed, { status: 200 });
-
   } catch (error: any) {
     console.error("SERVER ERROR:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
