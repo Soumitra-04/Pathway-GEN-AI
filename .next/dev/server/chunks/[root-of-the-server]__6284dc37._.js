@@ -50,9 +50,7 @@ __turbopack_context__.s([
 ]);
 var __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$server$2e$js__$5b$app$2d$route$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/node_modules/next/server.js [app-route] (ecmascript)");
 ;
-/* -------------------------
-   MASTER PROMPT (STATIC)
-------------------------- */ const MASTER_PROMPT = `
+const MASTER_PROMPT = `
 You are a Brand & Business Strategy Generator AI.
 Your ONLY job is to return a single JSON object in the exact structure described below.
 Do NOT add explanations, markdown, comments, or anything outside the JSON.
@@ -135,23 +133,23 @@ async function POST(request) {
     try {
         const body = await request.json();
         const { idea, audience, tone, brandName, industry } = body;
-        if (!idea) return __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$server$2e$js__$5b$app$2d$route$5d$__$28$ecmascript$29$__["NextResponse"].json({
-            error: "Idea is required"
-        }, {
-            status: 400
-        });
-        // Fill placeholders inside master prompt
+        if (!idea) {
+            return __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$server$2e$js__$5b$app$2d$route$5d$__$28$ecmascript$29$__["NextResponse"].json({
+                error: "Idea is required"
+            }, {
+                status: 400
+            });
+        }
         const finalPrompt = MASTER_PROMPT.replaceAll("<<BRAND_NAME>>", brandName || "").replaceAll("<<IDEA>>", idea).replaceAll("<<TARGET_AUDIENCE>>", audience || "").replaceAll("<<TONE>>", tone || "").replaceAll("<<INDUSTRY>>", industry || "");
-        /* -------------------------
-       CALL GROQ API
-------------------------- */ const groqResp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        // ---------- CALL GROQ ----------
+        const groqResp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
                 "Authorization": `Bearer ${process.env.GROQ_API_KEY}`
             },
             body: JSON.stringify({
-                model: "mixtral-8x7b-32768",
+                model: "llama-3.1-8b-instant",
                 messages: [
                     {
                         role: "user",
@@ -163,8 +161,26 @@ async function POST(request) {
             })
         });
         const groqJson = await groqResp.json();
-        let raw = groqJson.choices[0].message.content.trim();
-        // Ensure JSON parses properly
+        console.log("GROQ RAW JSON:", JSON.stringify(groqJson, null, 2));
+        if (!groqResp.ok || groqJson.error) {
+            return __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$server$2e$js__$5b$app$2d$route$5d$__$28$ecmascript$29$__["NextResponse"].json({
+                error: `Groq: ${groqJson.error?.message || "request failed"}`,
+                details: groqJson
+            }, {
+                status: 500
+            });
+        }
+        const content = groqJson.choices?.[0]?.message?.content;
+        if (!content) {
+            return __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$server$2e$js__$5b$app$2d$route$5d$__$28$ecmascript$29$__["NextResponse"].json({
+                error: "Groq response missing choices[0].message.content",
+                raw: groqJson
+            }, {
+                status: 500
+            });
+        }
+        let raw = content.trim();
+        // ---------- PARSE JSON FROM MODEL ----------
         let parsed;
         try {
             parsed = JSON.parse(raw);
@@ -173,9 +189,8 @@ async function POST(request) {
             const last = raw.lastIndexOf("}");
             parsed = JSON.parse(raw.slice(first, last + 1));
         }
-        /* -------------------------
-       LOGO GENERATION
-------------------------- */ const logoPrompt = parsed.logos?.promptUsed || `Minimal modern vector logo for ${brandName || parsed.branding?.nameOptions?.[0]} on clean background.`;
+        // ---------- LOGO GENERATION ----------
+        const logoPrompt = parsed.logos?.promptUsed || `Minimal modern vector logo for ${brandName || parsed.branding?.nameOptions?.[0]} on clean background.`;
         let imageUrls = [
             "https://via.placeholder.com/512?text=Logo1",
             "https://via.placeholder.com/512?text=Logo2"
@@ -193,7 +208,9 @@ async function POST(request) {
                 })
             });
             const falJson = await falResp.json().catch(()=>null);
-            if (falJson?.images) imageUrls = falJson.images;
+            if (falJson?.images) {
+                imageUrls = falJson.images;
+            }
         }
         parsed.logos = {
             promptUsed: logoPrompt,

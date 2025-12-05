@@ -104,7 +104,7 @@ export async function POST(request: Request) {
         "Authorization": `Bearer ${process.env.GROQ_API_KEY}`,
       },
       body: JSON.stringify({
-        model: "mixtral-8x7b-32768",
+       model: "llama-3.1-8b-instant",
         messages: [{ role: "user", content: finalPrompt }],
         temperature: 0.2,
         max_tokens: 3500,
@@ -114,13 +114,15 @@ export async function POST(request: Request) {
     const groqJson = await groqResp.json();
     console.log("GROQ RAW JSON:", JSON.stringify(groqJson, null, 2));
 
-    if (!groqResp.ok) {
-      // Groq returned an error object instead of choices[]
-      return NextResponse.json(
-        { error: "Groq API failed", details: groqJson },
-        { status: 500 }
-      );
-    }
+    if (!groqResp.ok || groqJson.error) {
+  return NextResponse.json(
+    {
+      error: `Groq: ${groqJson.error?.message || "request failed"}`,
+      details: groqJson,
+    },
+    { status: 500 }
+  );
+  }
 
     const content = groqJson.choices?.[0]?.message?.content;
     if (!content) {
