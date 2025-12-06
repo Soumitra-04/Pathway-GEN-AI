@@ -1,8 +1,10 @@
-//app/page.tsx
+// app/page.tsx
 
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
+import jsPDF from "jspdf";
+import html2canvas from "html2canvas";
 
 export default function HomePage() {
   const [idea, setIdea] = useState("");
@@ -15,6 +17,9 @@ export default function HomePage() {
   const [loading, setLoading] = useState(false);
   const [logoLoading, setLogoLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // 👉 this ref points to the logos section we’ll export to PDF
+  const logoSectionRef = useRef<HTMLDivElement | null>(null);
 
   // ------------------------------------------------
   // 1) MAIN: Generate Brand + Strategy + Logos
@@ -97,6 +102,44 @@ export default function HomePage() {
     }
   };
 
+  // ------------------------------------------------
+  // 3) DOWNLOAD LOGOS SECTION AS PDF
+  // ------------------------------------------------
+  const handleDownloadLogosPdf = async () => {
+    if (!logoSectionRef.current) return;
+
+    try {
+      const canvas = await html2canvas(logoSectionRef.current, { scale: 2 });
+      const imgData = canvas.toDataURL("image/png");
+
+      const pdf = new jsPDF({
+        orientation: "portrait",
+        unit: "pt",
+        format: "a4",
+      });
+
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+
+      const imgWidth = pageWidth - 40; // 20pt margins left/right
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+      const y = 20;
+
+      // If the image is taller than the page, just scale to fit
+      if (imgHeight > pageHeight - 40) {
+        pdf.addImage(imgData, "PNG", 20, 20, imgWidth, pageHeight - 40);
+      } else {
+        pdf.addImage(imgData, "PNG", 20, y, imgWidth, imgHeight);
+      }
+
+      pdf.save("logos.pdf");
+    } catch (err) {
+      console.error("PDF generation error:", err);
+      alert("Could not generate PDF. Check console for details.");
+    }
+  };
+
   return (
     <main style={{ padding: "2rem", maxWidth: 900, margin: "0 auto" }}>
       <h1>Pathway GEN AI – Brand Generator</h1>
@@ -147,6 +190,13 @@ export default function HomePage() {
           >
             {logoLoading ? "Regenerating..." : "Regenerate Logos Only"}
           </button>
+
+          {/* Show PDF button only when we actually have logos */}
+          {result?.logos?.imageUrls?.length > 0 && (
+            <button onClick={handleDownloadLogosPdf}>
+              Download Logos as PDF
+            </button>
+          )}
         </div>
       </div>
 
@@ -156,9 +206,12 @@ export default function HomePage() {
         </p>
       )}
 
-      {/* Show logos nicely */}
+      {/* Logo section – this is what we capture into PDF */}
       {result?.logos?.imageUrls && (
-        <div style={{ marginTop: "1.5rem" }}>
+        <div
+          ref={logoSectionRef}
+          style={{ marginTop: "1.5rem" }}
+        >
           <h2>Logo Options</h2>
           <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
             {result.logos.imageUrls.map((img: any, idx: number) => {
