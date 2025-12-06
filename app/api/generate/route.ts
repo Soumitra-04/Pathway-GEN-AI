@@ -1,3 +1,4 @@
+// app/api/generate/route.ts
 import { NextResponse } from "next/server";
 
 const MASTER_PROMPT = `
@@ -80,13 +81,65 @@ Industry: "<<INDUSTRY>>"
 Respond ONLY with valid JSON.
 `.trim();
 
+// Small helper: call Stability.ai Stable Image Core and return data URLs
+async function generateStabilityLogos(
+  prompt: string,
+  numImages: number
+): Promise<string[]> {
+  if (!process.env.STABILITY_API_KEY) {
+    console.warn("STABILITY_API_KEY not set, returning empty image list.");
+    return [];
+  }
+
+  const endpoint =
+    "https://api.stability.ai/v2beta/stable-image/generate/core";
+
+  const results: string[] = [];
+
+  // Call the API once per image (simple and reliable)
+  for (let i = 0; i < numImages; i++) {
+    const formData = new FormData();
+    formData.append("prompt", prompt);
+    formData.append("output_format", "png");
+
+    const resp = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.STABILITY_API_KEY}`,
+        Accept: "image/*",
+      },
+      body: formData,
+    });
+
+    if (!resp.ok) {
+      const errText = await resp.text().catch(() => "");
+      console.error(
+        "Stability API error (generate):",
+        resp.status,
+        errText.slice(0, 200)
+      );
+      break;
+    }
+
+    const arrayBuffer = await resp.arrayBuffer();
+    const base64 = Buffer.from(arrayBuffer).toString("base64");
+    const dataUrl = `data:image/png;base64,${base64}`;
+    results.push(dataUrl);
+  }
+
+  return results;
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json();
     const { idea, audience, tone, brandName, industry } = body;
 
     if (!idea) {
-      return NextResponse.json({ error: "Idea is required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Idea is required" },
+        { status: 400 }
+      );
     }
 
     const finalPrompt = MASTER_PROMPT
@@ -96,33 +149,36 @@ export async function POST(request: Request) {
       .replaceAll("<<TONE>>", tone || "")
       .replaceAll("<<INDUSTRY>>", industry || "");
 
-    // ---------- CALL GROQ ----------
-    const groqResp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${process.env.GROQ_API_KEY}`,
-      },
-      body: JSON.stringify({
-       model: "llama-3.1-8b-instant",
-        messages: [{ role: "user", content: finalPrompt }],
-        temperature: 0.2,
-        max_tokens: 3500,
-      }),
-    });
+    // 1) Call Groq for the brand JSON
+    const groqResp = await fetch(
+      "https://api.groq.com/openai/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: "llama-3.1-8b-instant",
+          messages: [{ role: "user", content: finalPrompt }],
+          temperature: 0.2,
+          max_tokens: 3500,
+        }),
+      }
+    );
 
     const groqJson = await groqResp.json();
     console.log("GROQ RAW JSON:", JSON.stringify(groqJson, null, 2));
 
     if (!groqResp.ok || groqJson.error) {
-  return NextResponse.json(
-    {
-      error: `Groq: ${groqJson.error?.message || "request failed"}`,
-      details: groqJson,
-    },
-    { status: 500 }
-  );
-  }
+      return NextResponse.json(
+        {
+          error: `Groq: ${groqJson.error?.message || "request failed"}`,
+          details: groqJson,
+        },
+        { status: 500 }
+      );
+    }
 
     const content = groqJson.choices?.[0]?.message?.content;
     if (!content) {
@@ -137,8 +193,8 @@ export async function POST(request: Request) {
 
     let raw = content.trim();
 
-    // ---------- PARSE JSON FROM MODEL ----------
-    let parsed;
+    // 2) Parse JSON returned by Groq
+    let parsed: any;
     try {
       parsed = JSON.parse(raw);
     } catch {
@@ -147,30 +203,26 @@ export async function POST(request: Request) {
       parsed = JSON.parse(raw.slice(first, last + 1));
     }
 
-    // ---------- LOGO GENERATION ----------
+    // 3) Build logo prompt
     const logoPrompt =
       parsed.logos?.promptUsed ||
-      `Minimal modern vector logo for ${brandName || parsed.branding?.nameOptions?.[0]} on clean background.`;
+      `Minimal modern vector logo for ${
+        brandName || parsed.branding?.nameOptions?.[0] || "the brand"
+      } on a clean white background, simple, flat, scalable, no text.`;
 
-    let imageUrls = [
+    // 4) Try Stability for real logos; fall back to placeholders if it fails
+    let imageUrls: string[] = [
       "https://via.placeholder.com/512?text=Logo1",
       "https://via.placeholder.com/512?text=Logo2",
     ];
 
-    if (process.env.FAL_API_KEY) {
-      const falResp = await fetch("https://fal.run/fal-ai/flux-lora", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Key ${process.env.FAL_API_KEY}`,
-        },
-        body: JSON.stringify({ prompt: logoPrompt, num_images: 2 }),
-      });
-
-      const falJson = await falResp.json().catch(() => null);
-      if (falJson?.images) {
-        imageUrls = falJson.images;
+    try {
+      const stabilityUrls = await generateStabilityLogos(logoPrompt, 2);
+      if (stabilityUrls.length) {
+        imageUrls = stabilityUrls;
       }
+    } catch (e) {
+      console.error("Stability call from /api/generate failed:", e);
     }
 
     parsed.logos = {
@@ -180,7 +232,10 @@ export async function POST(request: Request) {
 
     return NextResponse.json(parsed, { status: 200 });
   } catch (error: any) {
-    console.error("SERVER ERROR:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("SERVER ERROR /api/generate:", error);
+    return NextResponse.json(
+      { error: error.message || "Unexpected server error" },
+      { status: 500 }
+    );
   }
 }

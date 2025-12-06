@@ -3,7 +3,7 @@
 // This file validates that all pages and layouts export the correct types
 
 import type { AppRoutes, LayoutRoutes, ParamMap, AppRouteHandlerRoutes } from "./routes.js"
-import type { NextApiHandler, ResolvingMetadata, ResolvingViewport } from "next/types.js"
+import type { ResolvingMetadata, ResolvingViewport } from "next/types.js"
 import type { NextRequest } from 'next/server.js'
 
 type AppPageConfig<Route extends AppRoutes = AppRoutes> = {
@@ -46,19 +46,6 @@ type RouteHandlerConfig<Route extends AppRouteHandlerRoutes = AppRouteHandlerRou
   OPTIONS?: (request: NextRequest, context: { params: Promise<ParamMap[Route]> }) => Promise<Response | void> | Response | void
 }
 
-type ApiRouteConfig = {
-  default: (req: any, res: any) => ReturnType<NextApiHandler>
-  config?: {
-    api?: {
-      bodyParser?: boolean | { sizeLimit?: string }
-      responseLimit?: string | number | boolean
-      externalResolver?: boolean
-    }
-    runtime?: 'edge' | 'experimental-edge' | 'nodejs' | string // necessary unless config is exported as const
-    maxDuration?: number
-  }
-}
-
 
 // Validate ../../../app/page.tsx
 {
@@ -78,16 +65,18 @@ type ApiRouteConfig = {
   type __Unused = __Check
 }
 
-
-
-// Validate ../../../pages/api/generateBrand/generateBrand.ts
+// Validate ../../../app/api/stability/route.ts
 {
-  type __IsExpected<Specific extends ApiRouteConfig> = Specific
-  const handler = {} as typeof import("../../../pages/api/generateBrand/generateBrand.js")
+  type __IsExpected<Specific extends RouteHandlerConfig<"/api/stability">> = Specific
+  const handler = {} as typeof import("../../../app/api/stability/route.js")
   type __Check = __IsExpected<typeof handler>
   // @ts-ignore
   type __Unused = __Check
 }
+
+
+
+
 
 // Validate ../../../app/layout.tsx
 {

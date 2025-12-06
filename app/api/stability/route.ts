@@ -1,9 +1,7 @@
 // app/api/fal/route.ts
 import { NextResponse } from "next/server";
 
-// -----------------------------
-// MASTER PROMPT FOR FAL.AI
-// -----------------------------
+// Same master prompt for logo‑only regeneration
 const FAL_MASTER_PROMPT = `
 You are an expert brand designer AI.
 
@@ -47,14 +45,60 @@ Output instructions:
 - No background patterns or decoration
 `.trim();
 
+// Helper: call Stability and return N data URLs
+async function generateStabilityLogos(
+  prompt: string,
+  numImages: number
+): Promise<string[]> {
+  if (!process.env.STABILITY_API_KEY) {
+    console.warn("STABILITY_API_KEY not set, returning empty image list.");
+    return [];
+  }
+
+  const endpoint =
+    "https://api.stability.ai/v2beta/stable-image/generate/core";
+
+  const results: string[] = [];
+
+  for (let i = 0; i < numImages; i++) {
+    const formData = new FormData();
+    formData.append("prompt", prompt);
+    formData.append("output_format", "png");
+
+    const resp = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.STABILITY_API_KEY}`,
+        Accept: "image/*",
+      },
+      body: formData,
+    });
+
+    if (!resp.ok) {
+      const errText = await resp.text().catch(() => "");
+      console.error(
+        "Stability API error (/api/fal):",
+        resp.status,
+        errText.slice(0, 200)
+      );
+      break;
+    }
+
+    const arrayBuffer = await resp.arrayBuffer();
+    const base64 = Buffer.from(arrayBuffer).toString("base64");
+    const dataUrl = `data:image/png;base64,${base64}`;
+    results.push(dataUrl);
+  }
+
+  return results;
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json();
 
     const {
-      // you can pass EITHER a raw prompt…
       prompt,
-      // …or these brand fields to fill the master prompt:
       brandName,
       industry,
       tone,
@@ -69,16 +113,12 @@ export async function POST(request: Request) {
       numImages?: number;
     };
 
-    // -----------------------------
-    // 1) Build the final prompt
-    // -----------------------------
+    // 1) Build final prompt (either raw or templated)
     let finalPrompt: string;
 
-    if (prompt && typeof prompt === "string" && prompt.trim()) {
-      // If caller sends a direct prompt, use it as-is
+    if (prompt && prompt.trim()) {
       finalPrompt = prompt.trim();
     } else {
-      // Otherwise, use the master prompt with placeholders
       finalPrompt = FAL_MASTER_PROMPT
         .replaceAll("{{BRAND_NAME}}", brandName || "the brand")
         .replaceAll("{{INDUSTRY}}", industry || "its industry")
@@ -91,92 +131,36 @@ export async function POST(request: Request) {
 
     const imagesRequested =
       Number.isFinite(numImages) && numImages! > 0
-        ? Math.min(Number(numImages), 4) // small safety cap
+        ? Math.min(Number(numImages), 4)
         : 2;
 
-    if (!process.env.FAL_API_KEY) {
+    if (!process.env.STABILITY_API_KEY) {
       return NextResponse.json(
-        { error: "FAL_API_KEY is not set on the server" },
+        { error: "STABILITY_API_KEY is not set on the server" },
         { status: 500 }
       );
     }
 
-    // -----------------------------
-    // 2) Call Fal AI
-    // -----------------------------
-    const falResp = await fetch("https://fal.run/fal-ai/flux-lora", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        // Fal uses "Key" for auth, not "Bearer"
-        Authorization: `Key ${process.env.FAL_API_KEY}`,
-      },
-      body: JSON.stringify({
-        prompt: finalPrompt,
-        num_images: imagesRequested,
-      }),
-    });
+    const urls = await generateStabilityLogos(finalPrompt, imagesRequested);
 
-    const falJson = await falResp.json().catch(() => null);
-    console.log("FAL RAW JSON:", JSON.stringify(falJson, null, 2));
-
-    if (!falResp.ok || !falJson) {
+    if (!urls.length) {
       return NextResponse.json(
         {
-          error: "Fal API failed",
-          details: falJson,
+          error: "Stability response did not contain any image data",
         },
         { status: 500 }
       );
     }
 
-    // -----------------------------
-    // 3) Extract image URLs
-    // -----------------------------
-    let imageUrls: string[] = [];
-
-    // Case A: { images: ["url1", "url2", ...] }
-    if (Array.isArray((falJson as any).images)) {
-      const imgs = (falJson as any).images;
-      if (typeof imgs[0] === "string") {
-        imageUrls = imgs as string[];
-      } else if (imgs[0]?.url) {
-        imageUrls = imgs.map((img: any) => img.url);
-      }
-    }
-
-    // Case B: { output: { images: [...] } }
-    else if (Array.isArray((falJson as any).output?.images)) {
-      const imgs = (falJson as any).output.images;
-      if (typeof imgs[0] === "string") {
-        imageUrls = imgs as string[];
-      } else if (imgs[0]?.url) {
-        imageUrls = imgs.map((img: any) => img.url);
-      }
-    }
-
-    if (!imageUrls.length) {
-      return NextResponse.json(
-        {
-          error: "Fal response did not contain any image URLs",
-          details: falJson,
-        },
-        { status: 500 }
-      );
-    }
-
-    // -----------------------------
-    // 4) Return clean JSON payload
-    // -----------------------------
     return NextResponse.json(
       {
         promptUsed: finalPrompt,
-        imageUrls,
+        imageUrls: urls,
       },
       { status: 200 }
     );
   } catch (error: any) {
-    console.error("FAL SERVER ERROR:", error);
+    console.error("STABILITY SERVER ERROR (/api/fal):", error);
     return NextResponse.json(
       { error: error?.message || "Unexpected server error" },
       { status: 500 }

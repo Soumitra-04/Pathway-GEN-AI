@@ -44,6 +44,7 @@ module.exports = mod;
 "[project]/app/api/generate/route.ts [app-route] (ecmascript)", ((__turbopack_context__) => {
 "use strict";
 
+// app/api/generate/route.ts
 __turbopack_context__.s([
     "POST",
     ()=>POST
@@ -129,6 +130,39 @@ Tone/style: "<<TONE>>"
 Industry: "<<INDUSTRY>>"
 Respond ONLY with valid JSON.
 `.trim();
+// Small helper: call Stability.ai Stable Image Core and return data URLs
+async function generateStabilityLogos(prompt, numImages) {
+    if (!process.env.STABILITY_API_KEY) {
+        console.warn("STABILITY_API_KEY not set, returning empty image list.");
+        return [];
+    }
+    const endpoint = "https://api.stability.ai/v2beta/stable-image/generate/core";
+    const results = [];
+    // Call the API once per image (simple and reliable)
+    for(let i = 0; i < numImages; i++){
+        const formData = new FormData();
+        formData.append("prompt", prompt);
+        formData.append("output_format", "png");
+        const resp = await fetch(endpoint, {
+            method: "POST",
+            headers: {
+                Authorization: `Bearer ${process.env.STABILITY_API_KEY}`,
+                Accept: "image/*"
+            },
+            body: formData
+        });
+        if (!resp.ok) {
+            const errText = await resp.text().catch(()=>"");
+            console.error("Stability API error (generate):", resp.status, errText.slice(0, 200));
+            break;
+        }
+        const arrayBuffer = await resp.arrayBuffer();
+        const base64 = Buffer.from(arrayBuffer).toString("base64");
+        const dataUrl = `data:image/png;base64,${base64}`;
+        results.push(dataUrl);
+    }
+    return results;
+}
 async function POST(request) {
     try {
         const body = await request.json();
@@ -141,12 +175,12 @@ async function POST(request) {
             });
         }
         const finalPrompt = MASTER_PROMPT.replaceAll("<<BRAND_NAME>>", brandName || "").replaceAll("<<IDEA>>", idea).replaceAll("<<TARGET_AUDIENCE>>", audience || "").replaceAll("<<TONE>>", tone || "").replaceAll("<<INDUSTRY>>", industry || "");
-        // ---------- CALL GROQ ----------
+        // 1) Call Groq for the brand JSON
         const groqResp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
-                "Authorization": `Bearer ${process.env.GROQ_API_KEY}`
+                Authorization: `Bearer ${process.env.GROQ_API_KEY}`
             },
             body: JSON.stringify({
                 model: "llama-3.1-8b-instant",
@@ -180,7 +214,7 @@ async function POST(request) {
             });
         }
         let raw = content.trim();
-        // ---------- PARSE JSON FROM MODEL ----------
+        // 2) Parse JSON returned by Groq
         let parsed;
         try {
             parsed = JSON.parse(raw);
@@ -189,28 +223,20 @@ async function POST(request) {
             const last = raw.lastIndexOf("}");
             parsed = JSON.parse(raw.slice(first, last + 1));
         }
-        // ---------- LOGO GENERATION ----------
-        const logoPrompt = parsed.logos?.promptUsed || `Minimal modern vector logo for ${brandName || parsed.branding?.nameOptions?.[0]} on clean background.`;
+        // 3) Build logo prompt
+        const logoPrompt = parsed.logos?.promptUsed || `Minimal modern vector logo for ${brandName || parsed.branding?.nameOptions?.[0] || "the brand"} on a clean white background, simple, flat, scalable, no text.`;
+        // 4) Try Stability for real logos; fall back to placeholders if it fails
         let imageUrls = [
             "https://via.placeholder.com/512?text=Logo1",
             "https://via.placeholder.com/512?text=Logo2"
         ];
-        if (process.env.FAL_API_KEY) {
-            const falResp = await fetch("https://fal.run/fal-ai/flux-lora", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    "Authorization": `Key ${process.env.FAL_API_KEY}`
-                },
-                body: JSON.stringify({
-                    prompt: logoPrompt,
-                    num_images: 2
-                })
-            });
-            const falJson = await falResp.json().catch(()=>null);
-            if (falJson?.images) {
-                imageUrls = falJson.images;
+        try {
+            const stabilityUrls = await generateStabilityLogos(logoPrompt, 2);
+            if (stabilityUrls.length) {
+                imageUrls = stabilityUrls;
             }
+        } catch (e) {
+            console.error("Stability call from /api/generate failed:", e);
         }
         parsed.logos = {
             promptUsed: logoPrompt,
@@ -220,9 +246,9 @@ async function POST(request) {
             status: 200
         });
     } catch (error) {
-        console.error("SERVER ERROR:", error);
+        console.error("SERVER ERROR /api/generate:", error);
         return __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$server$2e$js__$5b$app$2d$route$5d$__$28$ecmascript$29$__["NextResponse"].json({
-            error: error.message
+            error: error.message || "Unexpected server error"
         }, {
             status: 500
         });

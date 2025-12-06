@@ -2,6 +2,7 @@
 "[project]/app/page.tsx [app-client] (ecmascript)", ((__turbopack_context__) => {
 "use strict";
 
+//app/page.tsx
 __turbopack_context__.s([
     "default",
     ()=>HomePage
@@ -21,7 +22,11 @@ function HomePage() {
     const [industry, setIndustry] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])("");
     const [result, setResult] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(null);
     const [loading, setLoading] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(false);
+    const [logoLoading, setLogoLoading] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(false);
     const [error, setError] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(null);
+    // ------------------------------------------------
+    // 1) MAIN: Generate Brand + Strategy + Logos
+    // ------------------------------------------------
     const handleGenerate = async ()=>{
         setLoading(true);
         setError(null);
@@ -40,18 +45,11 @@ function HomePage() {
                     industry
                 })
             });
-            const text = await res.text(); // read raw response
-            try {
-                const data = JSON.parse(text);
-                if (!res.ok) {
-                    setError(data.error || "Something went wrong");
-                } else {
-                    setResult(data);
-                }
-            } catch  {
-                // This means backend sent HTML (like the <!DOCTYPE error page)
-                console.error("Raw response from API:", text);
-                setError(`Backend returned non‑JSON response. First part: ${text.slice(0, 120)}...`);
+            const data = await res.json();
+            if (!res.ok) {
+                setError(data.error || "Something went wrong");
+            } else {
+                setResult(data);
             }
         } catch (err) {
             setError(err.message || "Network error");
@@ -59,10 +57,53 @@ function HomePage() {
             setLoading(false);
         }
     };
+    // ------------------------------------------------
+    // 2) REGENERATE LOGO ONLY (calls /api/fal)
+    // ------------------------------------------------
+    const handleRegenerateLogo = async ()=>{
+        if (!brandName && !result?.branding?.nameOptions?.[0]) {
+            setError("Need a brand name to regenerate logo.");
+            return;
+        }
+        setLogoLoading(true);
+        setError(null);
+        try {
+            const res = await fetch("/api/fal", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    brandName: brandName || result?.branding?.nameOptions?.[0],
+                    industry,
+                    tone,
+                    targetAudience: audience,
+                    numImages: 2
+                })
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                setError(data.error || "Logo regeneration failed");
+            } else {
+                // merge new logos into existing result
+                setResult((prev)=>({
+                        ...prev || {},
+                        logos: {
+                            promptUsed: data.promptUsed,
+                            imageUrls: data.imageUrls
+                        }
+                    }));
+            }
+        } catch (err) {
+            setError(err.message || "Network error while regenerating logo");
+        } finally{
+            setLogoLoading(false);
+        }
+    };
     return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("main", {
         style: {
             padding: "2rem",
-            maxWidth: 800,
+            maxWidth: 900,
             margin: "0 auto"
         },
         children: [
@@ -70,7 +111,7 @@ function HomePage() {
                 children: "Pathway GEN AI – Brand Generator"
             }, void 0, false, {
                 fileName: "[project]/app/page.tsx",
-                lineNumber: 58,
+                lineNumber: 102,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -87,7 +128,7 @@ function HomePage() {
                         onChange: (e)=>setBrandName(e.target.value)
                     }, void 0, false, {
                         fileName: "[project]/app/page.tsx",
-                        lineNumber: 61,
+                        lineNumber: 112,
                         columnNumber: 9
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("textarea", {
@@ -97,7 +138,7 @@ function HomePage() {
                         rows: 3
                     }, void 0, false, {
                         fileName: "[project]/app/page.tsx",
-                        lineNumber: 66,
+                        lineNumber: 117,
                         columnNumber: 9
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("input", {
@@ -106,7 +147,7 @@ function HomePage() {
                         onChange: (e)=>setAudience(e.target.value)
                     }, void 0, false, {
                         fileName: "[project]/app/page.tsx",
-                        lineNumber: 72,
+                        lineNumber: 123,
                         columnNumber: 9
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("input", {
@@ -115,7 +156,7 @@ function HomePage() {
                         onChange: (e)=>setTone(e.target.value)
                     }, void 0, false, {
                         fileName: "[project]/app/page.tsx",
-                        lineNumber: 77,
+                        lineNumber: 128,
                         columnNumber: 9
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("input", {
@@ -124,22 +165,44 @@ function HomePage() {
                         onChange: (e)=>setIndustry(e.target.value)
                     }, void 0, false, {
                         fileName: "[project]/app/page.tsx",
-                        lineNumber: 82,
+                        lineNumber: 133,
                         columnNumber: 9
                     }, this),
-                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
-                        onClick: handleGenerate,
-                        disabled: loading || !idea,
-                        children: loading ? "Generating..." : "Generate Brand Strategy"
-                    }, void 0, false, {
+                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                        style: {
+                            display: "flex",
+                            gap: "0.75rem",
+                            marginTop: "0.5rem"
+                        },
+                        children: [
+                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
+                                onClick: handleGenerate,
+                                disabled: loading || !idea,
+                                children: loading ? "Generating..." : "Generate Brand + Logos"
+                            }, void 0, false, {
+                                fileName: "[project]/app/page.tsx",
+                                lineNumber: 140,
+                                columnNumber: 11
+                            }, this),
+                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
+                                onClick: handleRegenerateLogo,
+                                disabled: logoLoading || !brandName && !result,
+                                children: logoLoading ? "Regenerating..." : "Regenerate Logos Only"
+                            }, void 0, false, {
+                                fileName: "[project]/app/page.tsx",
+                                lineNumber: 144,
+                                columnNumber: 11
+                            }, this)
+                        ]
+                    }, void 0, true, {
                         fileName: "[project]/app/page.tsx",
-                        lineNumber: 88,
+                        lineNumber: 139,
                         columnNumber: 9
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/app/page.tsx",
-                lineNumber: 60,
+                lineNumber: 104,
                 columnNumber: 7
             }, this),
             error && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -153,30 +216,79 @@ function HomePage() {
                 ]
             }, void 0, true, {
                 fileName: "[project]/app/page.tsx",
-                lineNumber: 94,
+                lineNumber: 154,
+                columnNumber: 9
+            }, this),
+            result?.logos?.imageUrls && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                style: {
+                    marginTop: "1.5rem"
+                },
+                children: [
+                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("h2", {
+                        children: "Logo Options"
+                    }, void 0, false, {
+                        fileName: "[project]/app/page.tsx",
+                        lineNumber: 162,
+                        columnNumber: 11
+                    }, this),
+                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                        style: {
+                            display: "flex",
+                            gap: "1rem",
+                            flexWrap: "wrap"
+                        },
+                        children: result.logos.imageUrls.map((img, idx)=>{
+                            const url = typeof img === "string" ? img : img.url;
+                            return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("img", {
+                                src: url,
+                                alt: `Logo ${idx + 1}`,
+                                style: {
+                                    width: 160,
+                                    height: 160,
+                                    objectFit: "contain",
+                                    border: "1px solid #444",
+                                    background: "#fff"
+                                }
+                            }, idx, false, {
+                                fileName: "[project]/app/page.tsx",
+                                lineNumber: 167,
+                                columnNumber: 17
+                            }, this);
+                        })
+                    }, void 0, false, {
+                        fileName: "[project]/app/page.tsx",
+                        lineNumber: 163,
+                        columnNumber: 11
+                    }, this)
+                ]
+            }, void 0, true, {
+                fileName: "[project]/app/page.tsx",
+                lineNumber: 161,
                 columnNumber: 9
             }, this),
             result && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("pre", {
                 style: {
-                    marginTop: "1rem",
+                    marginTop: "1.5rem",
                     background: "#111",
                     padding: "1rem",
-                    overflowX: "auto"
+                    overflowX: "auto",
+                    color: "#eee",
+                    fontSize: "0.85rem"
                 },
                 children: JSON.stringify(result, null, 2)
             }, void 0, false, {
                 fileName: "[project]/app/page.tsx",
-                lineNumber: 100,
+                lineNumber: 187,
                 columnNumber: 9
             }, this)
         ]
     }, void 0, true, {
         fileName: "[project]/app/page.tsx",
-        lineNumber: 57,
+        lineNumber: 101,
         columnNumber: 5
     }, this);
 }
-_s(HomePage, "baYno9KSI54mSLnlYpxy3EWWqhw=");
+_s(HomePage, "X9Lf7fgI/tLjnEFaUruPnzzTp6o=");
 _c = HomePage;
 var _c;
 __turbopack_context__.k.register(_c, "HomePage");

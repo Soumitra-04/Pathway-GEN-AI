@@ -1,3 +1,5 @@
+//app/page.tsx
+
 "use client";
 
 import { useState } from "react";
@@ -8,17 +10,22 @@ export default function HomePage() {
   const [tone, setTone] = useState("");
   const [brandName, setBrandName] = useState("");
   const [industry, setIndustry] = useState("");
+
   const [result, setResult] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [logoLoading, setLogoLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // ------------------------------------------------
+  // 1) MAIN: Generate Brand + Strategy + Logos
+  // ------------------------------------------------
   const handleGenerate = async () => {
     setLoading(true);
     setError(null);
     setResult(null);
 
     try {
-            const res = await fetch("/api/generate", {
+      const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -30,22 +37,13 @@ export default function HomePage() {
         }),
       });
 
-      const text = await res.text(); // read raw response
+      const data = await res.json();
 
-      try {
-        const data = JSON.parse(text);
-
-        if (!res.ok) {
-          setError(data.error || "Something went wrong");
-        } else {
-          setResult(data);
-        }
-      } catch {
-        // This means backend sent HTML (like the <!DOCTYPE error page)
-        console.error("Raw response from API:", text);
-        setError(`Backend returned non‑JSON response. First part: ${text.slice(0, 120)}...`);
+      if (!res.ok) {
+        setError(data.error || "Something went wrong");
+      } else {
+        setResult(data);
       }
-
     } catch (err: any) {
       setError(err.message || "Network error");
     } finally {
@@ -53,11 +51,64 @@ export default function HomePage() {
     }
   };
 
+  // ------------------------------------------------
+  // 2) REGENERATE LOGO ONLY (calls /api/fal)
+  // ------------------------------------------------
+  const handleRegenerateLogo = async () => {
+    if (!brandName && !result?.branding?.nameOptions?.[0]) {
+      setError("Need a brand name to regenerate logo.");
+      return;
+    }
+
+    setLogoLoading(true);
+    setError(null);
+
+    try {
+      const res = await fetch("/api/fal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          brandName: brandName || result?.branding?.nameOptions?.[0],
+          industry,
+          tone,
+          targetAudience: audience,
+          numImages: 2,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.error || "Logo regeneration failed");
+      } else {
+        // merge new logos into existing result
+        setResult((prev: any) => ({
+          ...(prev || {}),
+          logos: {
+            promptUsed: data.promptUsed,
+            imageUrls: data.imageUrls,
+          },
+        }));
+      }
+    } catch (err: any) {
+      setError(err.message || "Network error while regenerating logo");
+    } finally {
+      setLogoLoading(false);
+    }
+  };
+
   return (
-    <main style={{ padding: "2rem", maxWidth: 800, margin: "0 auto" }}>
+    <main style={{ padding: "2rem", maxWidth: 900, margin: "0 auto" }}>
       <h1>Pathway GEN AI – Brand Generator</h1>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", marginTop: "1rem" }}>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: "0.75rem",
+          marginTop: "1rem",
+        }}
+      >
         <input
           placeholder="Brand name (optional)"
           value={brandName}
@@ -85,9 +136,18 @@ export default function HomePage() {
           onChange={(e) => setIndustry(e.target.value)}
         />
 
-        <button onClick={handleGenerate} disabled={loading || !idea}>
-          {loading ? "Generating..." : "Generate Brand Strategy"}
-        </button>
+        <div style={{ display: "flex", gap: "0.75rem", marginTop: "0.5rem" }}>
+          <button onClick={handleGenerate} disabled={loading || !idea}>
+            {loading ? "Generating..." : "Generate Brand + Logos"}
+          </button>
+
+          <button
+            onClick={handleRegenerateLogo}
+            disabled={logoLoading || (!brandName && !result)}
+          >
+            {logoLoading ? "Regenerating..." : "Regenerate Logos Only"}
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -96,8 +156,44 @@ export default function HomePage() {
         </p>
       )}
 
+      {/* Show logos nicely */}
+      {result?.logos?.imageUrls && (
+        <div style={{ marginTop: "1.5rem" }}>
+          <h2>Logo Options</h2>
+          <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
+            {result.logos.imageUrls.map((img: any, idx: number) => {
+              const url = typeof img === "string" ? img : img.url;
+              return (
+                <img
+                  key={idx}
+                  src={url}
+                  alt={`Logo ${idx + 1}`}
+                  style={{
+                    width: 160,
+                    height: 160,
+                    objectFit: "contain",
+                    border: "1px solid #444",
+                    background: "#fff",
+                  }}
+                />
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Raw JSON (for debugging / hackathon demo) */}
       {result && (
-        <pre style={{ marginTop: "1rem", background: "#111", padding: "1rem", overflowX: "auto" }}>
+        <pre
+          style={{
+            marginTop: "1.5rem",
+            background: "#111",
+            padding: "1rem",
+            overflowX: "auto",
+            color: "#eee",
+            fontSize: "0.85rem",
+          }}
+        >
           {JSON.stringify(result, null, 2)}
         </pre>
       )}

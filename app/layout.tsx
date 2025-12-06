@@ -1,3 +1,5 @@
+//layout.tsx
+
 export const metadata = {
   title: "Pathway GEN AI",
   description: "AI powered brand & business generator",
