@@ -1,8 +1,10 @@
-// app/api/fal/route.ts
+// app/api/stability/route.ts
 import { NextResponse } from "next/server";
 
-// Same master prompt for logo‑only regeneration
-const FAL_MASTER_PROMPT = `
+// -----------------------------
+// MASTER PROMPT FOR LOGO REGEN
+// -----------------------------
+const STABILITY_MASTER_PROMPT = `
 You are an expert brand designer AI.
 
 Generate minimal, modern, high-quality logo concepts based on the brand details below.
@@ -45,7 +47,9 @@ Output instructions:
 - No background patterns or decoration
 `.trim();
 
-// Helper: call Stability and return N data URLs
+// -----------------------------
+// Helper: call Stability & return data URLs
+// -----------------------------
 async function generateStabilityLogos(
   prompt: string,
   numImages: number
@@ -77,7 +81,7 @@ async function generateStabilityLogos(
     if (!resp.ok) {
       const errText = await resp.text().catch(() => "");
       console.error(
-        "Stability API error (/api/fal):",
+        "Stability API error (/api/stability):",
         resp.status,
         errText.slice(0, 200)
       );
@@ -93,6 +97,9 @@ async function generateStabilityLogos(
   return results;
 }
 
+// -----------------------------
+// POST /api/stability – regenerate logos only
+// -----------------------------
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -119,7 +126,7 @@ export async function POST(request: Request) {
     if (prompt && prompt.trim()) {
       finalPrompt = prompt.trim();
     } else {
-      finalPrompt = FAL_MASTER_PROMPT
+      finalPrompt = STABILITY_MASTER_PROMPT
         .replaceAll("{{BRAND_NAME}}", brandName || "the brand")
         .replaceAll("{{INDUSTRY}}", industry || "its industry")
         .replaceAll("{{TONE}}", tone || "modern, premium")
@@ -145,9 +152,7 @@ export async function POST(request: Request) {
 
     if (!urls.length) {
       return NextResponse.json(
-        {
-          error: "Stability response did not contain any image data",
-        },
+        { error: "Stability response did not contain any image data" },
         { status: 500 }
       );
     }
@@ -160,7 +165,7 @@ export async function POST(request: Request) {
       { status: 200 }
     );
   } catch (error: any) {
-    console.error("STABILITY SERVER ERROR (/api/fal):", error);
+    console.error("STABILITY SERVER ERROR (/api/stability):", error);
     return NextResponse.json(
       { error: error?.message || "Unexpected server error" },
       { status: 500 }

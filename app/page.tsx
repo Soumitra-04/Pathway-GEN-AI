@@ -18,7 +18,7 @@ export default function HomePage() {
   const [logoLoading, setLogoLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // 👉 this ref points to the logos section we’ll export to PDF
+  // this ref points to the logos section we’ll export to PDF
   const logoSectionRef = useRef<HTMLDivElement | null>(null);
 
   // ------------------------------------------------
@@ -57,7 +57,7 @@ export default function HomePage() {
   };
 
   // ------------------------------------------------
-  // 2) REGENERATE LOGO ONLY (calls /api/fal)
+  // 2) REGENERATE LOGO ONLY (calls /api/stability) – robust JSON parsing
   // ------------------------------------------------
   const handleRegenerateLogo = async () => {
     if (!brandName && !result?.branding?.nameOptions?.[0]) {
@@ -69,7 +69,8 @@ export default function HomePage() {
     setError(null);
 
     try {
-      const res = await fetch("/api/fal", {
+      const res = await fetch("/api/stability", {
+        // 🔴 was "/api/fal"
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -81,19 +82,32 @@ export default function HomePage() {
         }),
       });
 
-      const data = await res.json();
+      const text = await res.text();
+      try {
+        const data = JSON.parse(text);
 
-      if (!res.ok) {
-        setError(data.error || "Logo regeneration failed");
-      } else {
-        // merge new logos into existing result
-        setResult((prev: any) => ({
-          ...(prev || {}),
-          logos: {
-            promptUsed: data.promptUsed,
-            imageUrls: data.imageUrls,
-          },
-        }));
+        if (!res.ok) {
+          setError(data.error || "Logo regeneration failed");
+        } else if (Array.isArray(data.imageUrls)) {
+          // merge new logos into existing result
+          setResult((prev: any) => ({
+            ...(prev || {}),
+            logos: {
+              promptUsed: data.promptUsed,
+              imageUrls: data.imageUrls,
+            },
+          }));
+        } else {
+          setError("No imageUrls returned from /api/stability");
+        }
+      } catch {
+        console.error("Raw /api/stability response (non‑JSON):", text);
+        setError(
+          `Backend (/api/stability) returned non‑JSON. First part: ${text.slice(
+            0,
+            120
+          )}...`
+        );
       }
     } catch (err: any) {
       setError(err.message || "Network error while regenerating logo");
@@ -126,7 +140,6 @@ export default function HomePage() {
 
       const y = 20;
 
-      // If the image is taller than the page, just scale to fit
       if (imgHeight > pageHeight - 40) {
         pdf.addImage(imgData, "PNG", 20, 20, imgWidth, pageHeight - 40);
       } else {
@@ -191,7 +204,6 @@ export default function HomePage() {
             {logoLoading ? "Regenerating..." : "Regenerate Logos Only"}
           </button>
 
-          {/* Show PDF button only when we actually have logos */}
           {result?.logos?.imageUrls?.length > 0 && (
             <button onClick={handleDownloadLogosPdf}>
               Download Logos as PDF
@@ -201,17 +213,12 @@ export default function HomePage() {
       </div>
 
       {error && (
-        <p style={{ color: "red", marginTop: "1rem" }}>
-          Error: {error}
-        </p>
+        <p style={{ color: "red", marginTop: "1rem" }}>Error: {error}</p>
       )}
 
       {/* Logo section – this is what we capture into PDF */}
       {result?.logos?.imageUrls && (
-        <div
-          ref={logoSectionRef}
-          style={{ marginTop: "1.5rem" }}
-        >
+        <div ref={logoSectionRef} style={{ marginTop: "1.5rem" }}>
           <h2>Logo Options</h2>
           <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
             {result.logos.imageUrls.map((img: any, idx: number) => {
