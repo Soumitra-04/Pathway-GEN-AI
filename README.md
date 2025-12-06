@@ -28,3 +28,9 @@ A GenAI-powered system that helps users build their personal brand — including
 ## DAY 3
 - SETUP API ROUTING AND TEST
 - Learnt a lot from errors that came in
+
+## DAY 4
+- BACKEND DONE WITH
+  - API ROUTING(GROQ + STABILITY.AI)
+  - SAVE PDF
+  - REGENERATE LOGOS
