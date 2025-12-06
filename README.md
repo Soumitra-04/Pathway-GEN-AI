@@ -26,5 +26,5 @@ A GenAI-powered system that helps users build their personal brand — including
         2.Created API KEY
 
 ## DAY 3
-- JSON master prompt Fal.ai
 - SETUP API ROUTING AND TEST
+- Learnt a lot from errors that came in
