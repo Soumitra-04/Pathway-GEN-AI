@@ -215,7 +215,7 @@ export async function POST(request: Request) {
     }
 
     // Fill prompt with user inputs
-    const finalPrompt = MASTER_PROMPT
+    let finalPrompt = MASTER_PROMPT
       .replaceAll("<<BRAND_NAME>>", brandName || "")
       .replaceAll("<<IDEA>>", idea)
       .replaceAll("<<TARGET_AUDIENCE>>", audience || "")
@@ -253,7 +253,8 @@ export async function POST(request: Request) {
       );
     }
 
-    const content = groqJson.choices?.[0]?.message?.content;
+    let content: string = groqJson.choices?.[0]?.message?.content || "";
+
     if (!content) {
       return NextResponse.json(
         {
@@ -266,19 +267,59 @@ export async function POST(request: Request) {
 
     let raw = content.trim();
 
+    // Strip ```json or ``` fences if the model ever ignores instructions
+    if (raw.startsWith("```")) {
+      const firstBrace = raw.indexOf("{");
+      const lastBrace = raw.lastIndexOf("}");
+      if (firstBrace !== -1 && lastBrace !== -1) {
+        raw = raw.slice(firstBrace, lastBrace + 1);
+      }
+    }
+
     // 2) Parse JSON returned by Groq (robust)
     let parsed: any;
+
     try {
       parsed = JSON.parse(raw);
-    } catch {
+    } catch (e1) {
+      console.warn("First JSON.parse failed, trying to slice braces:", e1);
       const first = raw.indexOf("{");
       const last = raw.lastIndexOf("}");
-      parsed = JSON.parse(raw.slice(first, last + 1));
+
+      if (first === -1 || last === -1) {
+        console.error("Could not find JSON braces in Groq output:", raw);
+        return NextResponse.json(
+          {
+            error: "Model returned non‑JSON content.",
+            raw,
+          },
+          { status: 500 }
+        );
+      }
+
+      const sliced = raw.slice(first, last + 1);
+      try {
+        parsed = JSON.parse(sliced);
+      } catch (e2) {
+        console.error(
+          "Second JSON.parse failed, invalid JSON from model:",
+          e2,
+          "\nRAW (truncated):",
+          sliced.slice(0, 400)
+        );
+        return NextResponse.json(
+          {
+            error:
+              "Model returned invalid JSON (parse error: Expected ',' or ']' or similar).",
+            raw: sliced,
+          },
+          { status: 500 }
+        );
+      }
     }
 
     // -----------------------------------------------------
     // 2b) Normalize shape so frontend remains compatible
-    //     (copy visualIdentity.colorPalette -> branding.colorPalette, etc.)
     // -----------------------------------------------------
     if (parsed?.branding?.visualIdentity) {
       const vi = parsed.branding.visualIdentity;

@@ -6,17 +6,17 @@
   "rootMainFiles": [],
   "pages": {
     "/_error": [
-      "static/chunks/node_modules_next_dist_compiled_8ca6b690._.js",
-      "static/chunks/node_modules_next_dist_shared_lib_cf5b50a6._.js",
-      "static/chunks/node_modules_next_dist_client_d0aa886c._.js",
-      "static/chunks/node_modules_next_dist_19fd0646._.js",
-      "static/chunks/node_modules_next_error_1cfbb379.js",
-      "static/chunks/[next]_entry_page-loader_ts_43b523b5._.js",
-      "static/chunks/node_modules_react-dom_4411d9bd._.js",
-      "static/chunks/node_modules_7f09fef0._.js",
-      "static/chunks/[root-of-the-server]__092393de._.js",
-      "static/chunks/pages__error_2da965e7._.js",
-      "static/chunks/turbopack-pages__error_9f8f7792._.js"
+      "static/chunks/96cfc_next_dist_compiled_937564db._.js",
+      "static/chunks/96cfc_next_dist_shared_lib_1634bcd2._.js",
+      "static/chunks/96cfc_next_dist_client_9c59677c._.js",
+      "static/chunks/96cfc_next_dist_f7ca4580._.js",
+      "static/chunks/96cfc_next_error_64479718.js",
+      "static/chunks/[next]_entry_page-loader_ts_a90930f6._.js",
+      "static/chunks/96cfc_react-dom_922ad2d2._.js",
+      "static/chunks/96cfc_cba82ba2._.js",
+      "static/chunks/[root-of-the-server]__390716fe._.js",
+      "static/chunks/OneDrive_Desktop_Pathway-GEN-AI_pages__error_2da965e7._.js",
+      "static/chunks/turbopack-OneDrive_Desktop_Pathway-GEN-AI_pages__error_2f0ed79a._.js"
     ]
   },
   "ampFirstPages": []
