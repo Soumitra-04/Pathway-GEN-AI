@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 
 // ---------------------------------------------------------
 // MASTER PROMPT (world‑class Brand Strategist + full JSON)
-// (merged – same structure you both used)
+// (merged – same structure you both used, UNCHANGED)
 // ---------------------------------------------------------
 const MASTER_PROMPT = `
 You are a world-class Brand Strategist + Business Consultant AI with 15+ years of expertise in consumer psychology, brand positioning, and startup advisory.
@@ -153,7 +153,6 @@ Rules:
    Cleanup helpers to survive messy model JSON
 --------------------------------------------------- */
 
-// Remove trailing commas in objects/arrays and undefineds in arrays
 function removeTrailingCommas(obj: any): any {
   if (Array.isArray(obj)) {
     return obj.filter((el) => el !== undefined).map(removeTrailingCommas);
@@ -169,23 +168,16 @@ function removeTrailingCommas(obj: any): any {
   return obj;
 }
 
-// Extra normalization for the ""Experience..."" type bugs
 function normalizeBadQuotes(str: string): string {
-  // 1) Collapse any "" into "
   let s = str.replace(/""/g, '"');
-
-  // 2) Remove stray control characters
   s = s.replace(/[\u0000-\u001F]+/g, "");
-
   return s;
 }
 
 function safeParseJSON(raw: string): any {
-  // Try naive parse first
   try {
     return JSON.parse(raw);
   } catch {
-    // Extract object region
     const first = raw.indexOf("{");
     const last = raw.lastIndexOf("}");
     if (first === -1 || last === -1) {
@@ -194,11 +186,7 @@ function safeParseJSON(raw: string): any {
 
     let jsonString = raw.slice(first, last + 1);
 
-    // Fix common issues: trailing commas and bad quotes
-    jsonString = jsonString
-      .replace(/,\s*(\]|\})/g, "$1") // trailing commas
-      .trim();
-
+    jsonString = jsonString.replace(/,\s*(\]|\})/g, "$1").trim();
     jsonString = normalizeBadQuotes(jsonString);
 
     const parsed = JSON.parse(jsonString);
@@ -207,42 +195,40 @@ function safeParseJSON(raw: string): any {
 }
 
 /* ---------------------------------------------------
-   Stability helper for logos
-   (merged: still PNG data URLs; easy for frontend)
+   Hugging Face helper for logos (image only)
 --------------------------------------------------- */
-async function generateStabilityLogos(
+
+const HF_IMAGE_MODEL = "stabilityai/stable-diffusion-xl-base-1.0";
+
+async function generateHFLogos(
   prompt: string,
   numImages: number
 ): Promise<string[]> {
-  if (!process.env.STABILITY_API_KEY) {
-    console.warn("STABILITY_API_KEY not set, returning empty image list.");
+  if (!process.env.HUGGINGFACE_API_KEY) {
+    console.warn("HUGGINGFACE_API_KEY not set, returning placeholder logos.");
     return [];
   }
 
-  const endpoint =
-    "https://api.stability.ai/v2beta/stable-image/generate/core";
-
+  const endpoint = `https://router.huggingface.co/models/${HF_IMAGE_MODEL}`;
   const results: string[] = [];
 
   for (let i = 0; i < numImages; i++) {
-    const formData = new FormData();
-    formData.append("prompt", prompt);
-    formData.append("output_format", "png");
-    // You can add style_preset/aspect_ratio here if you want stricter logos
-
     const resp = await fetch(endpoint, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${process.env.STABILITY_API_KEY}`,
-        Accept: "image/*",
+        Authorization: `Bearer ${process.env.HUGGINGFACE_API_KEY}`,
+        Accept: "image/png",
+        "Content-Type": "application/json",
       },
-      body: formData,
+      body: JSON.stringify({
+        inputs: prompt,
+      }),
     });
 
     if (!resp.ok) {
       const errText = await resp.text().catch(() => "");
       console.error(
-        "Stability API error (generate):",
+        "Hugging Face image API error (/api/generate):",
         resp.status,
         errText.slice(0, 200)
       );
@@ -259,7 +245,7 @@ async function generateStabilityLogos(
 }
 
 // ---------------------------------------------------------
-// POST /api/generate
+// POST /api/generate  – Groq for TEXT, HF only for LOGOS
 // ---------------------------------------------------------
 export async function POST(request: Request) {
   try {
@@ -273,15 +259,16 @@ export async function POST(request: Request) {
       );
     }
 
-    // Fill prompt with user inputs
-    const finalPrompt = MASTER_PROMPT
-      .replaceAll("<<BRAND_NAME>>", brandName || "")
+    const finalPrompt = MASTER_PROMPT.replaceAll(
+      "<<BRAND_NAME>>",
+      brandName || ""
+    )
       .replaceAll("<<IDEA>>", idea)
       .replaceAll("<<TARGET_AUDIENCE>>", audience || "")
       .replaceAll("<<TONE>>", tone || "")
       .replaceAll("<<INDUSTRY>>", industry || "");
 
-    // 1) Call Groq for the brand JSON
+    // 1) Groq for brand JSON  ✅ (TEXT ONLY)
     const groqResp = await fetch(
       "https://api.groq.com/openai/v1/chat/completions",
       {
@@ -292,7 +279,6 @@ export async function POST(request: Request) {
         },
         body: JSON.stringify({
           model: "llama-3.1-8b-instant",
-          // Ask Groq to stay in JSON mode, but we still clean up
           response_format: { type: "json_object" },
           messages: [{ role: "user", content: finalPrompt }],
           temperature: 0.2,
@@ -315,7 +301,6 @@ export async function POST(request: Request) {
     }
 
     let content: any = groqJson.choices?.[0]?.message?.content;
-
     if (!content) {
       return NextResponse.json(
         {
@@ -326,13 +311,11 @@ export async function POST(request: Request) {
       );
     }
 
-    // content might already be an object (in strict JSON mode), or a JSON string
     let parsed: any;
     try {
       if (typeof content === "string") {
         parsed = safeParseJSON(content.trim());
       } else {
-        // already object-shaped
         parsed = removeTrailingCommas(content);
       }
     } catch (e) {
@@ -351,9 +334,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // -----------------------------------------------------
-    // Normalize shape so frontend remains compatible
-    // -----------------------------------------------------
+    // 2) Normalize shape for frontend
     if (parsed?.branding?.visualIdentity) {
       const vi = parsed.branding.visualIdentity;
 
@@ -372,19 +353,19 @@ export async function POST(request: Request) {
         brandName || parsed.branding?.nameOptions?.[0] || "the brand"
       } on a clean white background, simple, flat, scalable, no text.`;
 
-    // 4) Try Stability for real logos; fall back to placeholders if it fails
+    // 4) Hugging Face for initial logos (image only)
     let imageUrls: string[] = [
       "https://dummyimage.com/512x512/111/aaa.png&text=Logo+1",
       "https://dummyimage.com/512x512/111/aaa.png&text=Logo+2",
     ];
 
     try {
-      const stabilityUrls = await generateStabilityLogos(logoPrompt, 2);
-      if (stabilityUrls.length) {
-        imageUrls = stabilityUrls;
+      const hfUrls = await generateHFLogos(logoPrompt, 2);
+      if (hfUrls.length) {
+        imageUrls = hfUrls;
       }
     } catch (e) {
-      console.error("Stability call from /api/generate failed:", e);
+      console.error("HF image call from /api/generate failed:", e);
     }
 
     parsed.logos = {
@@ -394,7 +375,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json(parsed, { status: 200 });
   } catch (error: any) {
-    console.error("SERVER ERROR /api/generate:", error);
+    console.error("SERVER ERROR /api/generate (HF+Groq):", error);
     return NextResponse.json(
       { error: error.message || "Unexpected server error" },
       { status: 500 }

@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 
 /* -----------------------------
    MASTER PROMPT FOR LOGO REGEN
-   (Merged Shreeya + Soumitra)
+   (Merged Shreeya + Soumitra – UNCHANGED)
 ----------------------------- */
 
 const STABILITY_MASTER_PROMPT = `
@@ -63,45 +63,45 @@ Export requirements:
 `.trim();
 
 /* -----------------------------
-   Helper: call Stability & return data URLs (PNG)
+   Helper: call Hugging Face image model & return PNG data URLs
 ----------------------------- */
 
-async function generateStabilityLogos(
+// You can change this to any image model that supports image generation.
+const HF_IMAGE_MODEL = "stabilityai/stable-diffusion-xl-base-1.0";
+
+async function generateHFLogos(
   prompt: string,
   numImages: number
 ): Promise<string[]> {
-  if (!process.env.STABILITY_API_KEY) {
-    console.warn("STABILITY_API_KEY not set, returning empty image list.");
+  if (!process.env.HUGGINGFACE_API_KEY) {
+    console.warn("HUGGINGFACE_API_KEY not set, returning empty image list.");
     return [];
   }
 
-  const endpoint = "https://api.stability.ai/v2beta/stable-image/generate/core";
+  // New router endpoint (old api-inference is 410)
+  const endpoint = `https://router.huggingface.co/models/${HF_IMAGE_MODEL}`;
   const results: string[] = [];
 
   for (let i = 0; i < numImages; i++) {
-    const formData = new FormData();
-    formData.append("prompt", prompt);
-    formData.append("output_format", "png");
-    formData.append("aspect_ratio", "1:1");
-    formData.append("style_preset", "logo");
-
     const resp = await fetch(endpoint, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${process.env.STABILITY_API_KEY}`,
-        Accept: "image/*",
+        Authorization: `Bearer ${process.env.HUGGINGFACE_API_KEY}`,
+        Accept: "image/png",
+        "Content-Type": "application/json",
       },
-      body: formData,
+      body: JSON.stringify({
+        inputs: prompt,
+      }),
     });
 
     if (!resp.ok) {
       const errText = await resp.text().catch(() => "");
       console.error(
-        "Stability API error (/api/stability):",
+        "Hugging Face image API error (/api/stability):",
         resp.status,
         errText.slice(0, 200)
       );
-      // Stop on first failure to avoid spamming the API
       break;
     }
 
@@ -157,24 +157,24 @@ export async function POST(request: Request) {
         );
     }
 
-    // Cap at 4 images just like Shreeya's version, default 2
+    // Cap at 4 images, default 2
     const imagesRequested =
       Number.isFinite(numImages) && (numImages as number) > 0
         ? Math.min(Number(numImages), 4)
         : 2;
 
-    if (!process.env.STABILITY_API_KEY) {
+    if (!process.env.HUGGINGFACE_API_KEY) {
       return NextResponse.json(
-        { error: "STABILITY_API_KEY is not set on the server" },
+        { error: "HUGGINGFACE_API_KEY is not set on the server" },
         { status: 500 }
       );
     }
 
-    const urls = await generateStabilityLogos(finalPrompt, imagesRequested);
+    const urls = await generateHFLogos(finalPrompt, imagesRequested);
 
     if (!urls.length) {
       return NextResponse.json(
-        { error: "Stability response did not contain any image data" },
+        { error: "Hugging Face response did not contain any image data" },
         { status: 500 }
       );
     }
@@ -187,7 +187,7 @@ export async function POST(request: Request) {
       { status: 200 }
     );
   } catch (error: any) {
-    console.error("STABILITY SERVER ERROR (/api/stability):", error);
+    console.error("HF STABILITY SERVER ERROR (/api/stability):", error);
     return NextResponse.json(
       { error: error?.message || "Unexpected server error" },
       { status: 500 }
