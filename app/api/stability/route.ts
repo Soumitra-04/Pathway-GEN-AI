@@ -1,13 +1,12 @@
 // app/api/stability/route.ts
 import { NextResponse } from "next/server";
 
-// -----------------------------
-// MASTER PROMPT FOR LOGO REGEN
-// -----------------------------
-const STABILITY_MASTER_PROMPT = `
-You are an expert brand designer AI.
+/* -----------------------------
+   MASTER PROMPT FOR LOGO REGEN
+----------------------------- */
 
-Generate minimal, modern, high-quality logo concepts based on the brand details below.
+const STABILITY_MASTER_PROMPT = `
+You are an expert brand designer AI. Generate minimal, modern, high-quality logo concepts based on the brand details below.
 
 Design requirements:
 - Clean, professional, and scalable logo
@@ -45,11 +44,33 @@ Output instructions:
 - Focus on abstract marks, emblems, or minimalist icons
 - Original design only
 - No background patterns or decoration
+
+--- ENHANCED INSTRUCTIONS FOR SUPERIOR RESULTS ---
+- Prioritize symmetry, golden ratio balance, and harmonious proportions
+- Use abstract shapes that subtly reflect the brand’s industry & customer psychology
+- Include symbolism that represents values (innovation, trust, growth, luxury, etc.)
+- Ensure the mark looks iconic and recognizable as an app icon and favicon
+- Avoid random shapes — every shape should communicate meaning intelligently
+- Superior edge clarity: sharp edges, smooth curves, no artifacts
+- Maintain extremely high contrast to make the logo pop on dark/light UI themes
+- Ensure the center of the image contains the symbol with no unnecessary padding
+- Use subtle geometry inspiration: Bauhaus, Swiss Modernism, Japanese minimalism
+- Not allowed: mascots, characters, animals, clip-art, letters unless brand requires
+
+--- EXPORT REQUIREMENTS ---
+- 1:1 square composition
+- High resolution
+- Pure white (#FFFFFF) or full transparency background only
+- No prompts, no watermarks, no text, no signature
+
+Goal:
+Generate a premium, elegant, ultra-clean brand logo symbol that looks like it belongs to a successful global brand, ready for website header, business card, product print, and mobile app icon.
 `.trim();
 
-// -----------------------------
-// Helper: call Stability & return data URLs
-// -----------------------------
+/* -----------------------------
+   Helper: call Stability & return data URLs
+----------------------------- */
+
 async function generateStabilityLogos(
   prompt: string,
   numImages: number
@@ -59,9 +80,7 @@ async function generateStabilityLogos(
     return [];
   }
 
-  const endpoint =
-    "https://api.stability.ai/v2beta/stable-image/generate/core";
-
+  const endpoint = "https://api.stability.ai/v2beta/stable-image/generate/core";
   const results: string[] = [];
 
   for (let i = 0; i < numImages; i++) {
@@ -85,6 +104,7 @@ async function generateStabilityLogos(
         resp.status,
         errText.slice(0, 200)
       );
+      // Stop on first failure to avoid spamming the API
       break;
     }
 
@@ -97,13 +117,22 @@ async function generateStabilityLogos(
   return results;
 }
 
-// -----------------------------
-// POST /api/stability – regenerate logos only
-// -----------------------------
+/* -----------------------------
+   POST /api/stability – regenerate logos only
+----------------------------- */
+
+type StabilityRequestBody = {
+  prompt?: string;
+  brandName?: string;
+  industry?: string;
+  tone?: string;
+  targetAudience?: string;
+  numImages?: number;
+};
+
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-
+    const body = (await request.json()) as StabilityRequestBody;
     const {
       prompt,
       brandName,
@@ -111,21 +140,16 @@ export async function POST(request: Request) {
       tone,
       targetAudience,
       numImages,
-    } = body as {
-      prompt?: string;
-      brandName?: string;
-      industry?: string;
-      tone?: string;
-      targetAudience?: string;
-      numImages?: number;
-    };
+    } = body;
 
     // 1) Build final prompt (either raw or templated)
     let finalPrompt: string;
 
     if (prompt && prompt.trim()) {
+      // If a raw prompt is passed, let the user override the template
       finalPrompt = prompt.trim();
     } else {
+      // Otherwise, fill the master template with brand details
       finalPrompt = STABILITY_MASTER_PROMPT
         .replaceAll("{{BRAND_NAME}}", brandName || "the brand")
         .replaceAll("{{INDUSTRY}}", industry || "its industry")
@@ -137,7 +161,7 @@ export async function POST(request: Request) {
     }
 
     const imagesRequested =
-      Number.isFinite(numImages) && numImages! > 0
+      Number.isFinite(numImages) && (numImages as number) > 0
         ? Math.min(Number(numImages), 4)
         : 2;
 
