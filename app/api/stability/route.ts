@@ -3,23 +3,24 @@ import { NextResponse } from "next/server";
 
 /* -----------------------------
    MASTER PROMPT FOR LOGO REGEN
+   (Merged Shreeya + Soumitra)
 ----------------------------- */
 
 const STABILITY_MASTER_PROMPT = `
-You are an expert brand designer AI. Generate minimal, modern, high-quality logo concepts based on the brand details below.
+You are an expert brand designer AI. Generate minimal, modern, high-quality vector-style logo concepts based on the brand details below.
 
 Design requirements:
-- Clean, professional, and scalable logo
-- Suitable for website header, social media, and product packaging
+- Clean, professional, and scalable logo symbol
+- Suitable for website header, app icon, social media, and product packaging
 - Flat or semi-flat design (strictly no 3D, no gradients)
 - No mockups, no scenes, no devices
 - No shadows, no lighting effects, no textures
-- Centered composition
+- Centered geometric composition
 - High contrast with clear geometry
-- Vector-style or SVG-like appearance
-- Plain white or fully transparent background
+- SVG-icon style with sharp edges and perfect edge clarity
+- Plain white (#FFFFFF) or fully transparent background
 - Avoid letters, words, or typography unless explicitly requested
-- Logo should work at very small sizes (icon-ready)
+- Logo should work at very small sizes (favicon / app icon ready)
 
 Brand details:
 Brand Name: {{BRAND_NAME}}
@@ -30,45 +31,39 @@ Target Audience: {{TARGET_AUDIENCE}}
 Style guidance:
 - Modern
 - Premium
-- Timeless
+- Timeless and iconic
 - Elegant but simple
-- Symbol or emblem focused
+- Symbol-focused, not text-focused
 
-Color guidance (optional):
-- Use a limited color palette (1–3 colors max)
+Color guidance:
+- Limited palette (1–3 colors max)
 - Prefer elegant, brand-safe colors
-- Avoid neon, pastel, or overly saturated colors
+- Avoid neon, pastel, or oversaturated tones
 
 Output instructions:
 - Generate visually distinct logo symbols
 - Focus on abstract marks, emblems, or minimalist icons
 - Original design only
 - No background patterns or decoration
+- No mockups, no watermarks, no text in image
 
---- ENHANCED INSTRUCTIONS FOR SUPERIOR RESULTS ---
+Advanced quality requirements:
 - Prioritize symmetry, golden ratio balance, and harmonious proportions
-- Use abstract shapes that subtly reflect the brand’s industry & customer psychology
-- Include symbolism that represents values (innovation, trust, growth, luxury, etc.)
-- Ensure the mark looks iconic and recognizable as an app icon and favicon
-- Avoid random shapes — every shape should communicate meaning intelligently
-- Superior edge clarity: sharp edges, smooth curves, no artifacts
-- Maintain extremely high contrast to make the logo pop on dark/light UI themes
-- Ensure the center of the image contains the symbol with no unnecessary padding
-- Use subtle geometry inspiration: Bauhaus, Swiss Modernism, Japanese minimalism
-- Not allowed: mascots, characters, animals, clip-art, letters unless brand requires
+- Symbolism connected to industry and customer psychology
+- Every shape must communicate meaning intelligently (no random shapes)
+- Must look like a global brand symbol
+- Works on light and dark UI themes
+- Minimal padding — symbol centered in a 1:1 square frame
 
---- EXPORT REQUIREMENTS ---
-- 1:1 square composition
+Export requirements:
+- Square 1:1 composition
 - High resolution
-- Pure white (#FFFFFF) or full transparency background only
-- No prompts, no watermarks, no text, no signature
-
-Goal:
-Generate a premium, elegant, ultra-clean brand logo symbol that looks like it belongs to a successful global brand, ready for website header, business card, product print, and mobile app icon.
+- PNG output suitable for web and print
+- Pure white or transparent background only
 `.trim();
 
 /* -----------------------------
-   Helper: call Stability & return data URLs
+   Helper: call Stability & return data URLs (PNG)
 ----------------------------- */
 
 async function generateStabilityLogos(
@@ -87,6 +82,8 @@ async function generateStabilityLogos(
     const formData = new FormData();
     formData.append("prompt", prompt);
     formData.append("output_format", "png");
+    formData.append("aspect_ratio", "1:1");
+    formData.append("style_preset", "logo");
 
     const resp = await fetch(endpoint, {
       method: "POST",
@@ -160,6 +157,7 @@ export async function POST(request: Request) {
         );
     }
 
+    // Cap at 4 images just like Shreeya's version, default 2
     const imagesRequested =
       Number.isFinite(numImages) && (numImages as number) > 0
         ? Math.min(Number(numImages), 4)

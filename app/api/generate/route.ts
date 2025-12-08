@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 
 // ---------------------------------------------------------
 // MASTER PROMPT (world‑class Brand Strategist + full JSON)
+// (merged – same structure you both used)
 // ---------------------------------------------------------
 const MASTER_PROMPT = `
 You are a world-class Brand Strategist + Business Consultant AI with 15+ years of expertise in consumer psychology, brand positioning, and startup advisory.
@@ -148,9 +149,67 @@ Rules:
 - If a section is hard to fill, still return content — do NOT skip or leave blank.
 `.trim();
 
-// ---------------------------------------------------------
-// Small helper: call Stability.ai Stable Image Core
-// ---------------------------------------------------------
+/* ---------------------------------------------------
+   Cleanup helpers to survive messy model JSON
+--------------------------------------------------- */
+
+// Remove trailing commas in objects/arrays and undefineds in arrays
+function removeTrailingCommas(obj: any): any {
+  if (Array.isArray(obj)) {
+    return obj.filter((el) => el !== undefined).map(removeTrailingCommas);
+  } else if (obj !== null && typeof obj === "object") {
+    const cleaned: any = {};
+    for (const key in obj) {
+      if (Object.prototype.hasOwnProperty.call(obj, key)) {
+        cleaned[key] = removeTrailingCommas(obj[key]);
+      }
+    }
+    return cleaned;
+  }
+  return obj;
+}
+
+// Extra normalization for the ""Experience..."" type bugs
+function normalizeBadQuotes(str: string): string {
+  // 1) Collapse any "" into "
+  let s = str.replace(/""/g, '"');
+
+  // 2) Remove stray control characters
+  s = s.replace(/[\u0000-\u001F]+/g, "");
+
+  return s;
+}
+
+function safeParseJSON(raw: string): any {
+  // Try naive parse first
+  try {
+    return JSON.parse(raw);
+  } catch {
+    // Extract object region
+    const first = raw.indexOf("{");
+    const last = raw.lastIndexOf("}");
+    if (first === -1 || last === -1) {
+      throw new Error("Failed to extract JSON block from model output.");
+    }
+
+    let jsonString = raw.slice(first, last + 1);
+
+    // Fix common issues: trailing commas and bad quotes
+    jsonString = jsonString
+      .replace(/,\s*(\]|\})/g, "$1") // trailing commas
+      .trim();
+
+    jsonString = normalizeBadQuotes(jsonString);
+
+    const parsed = JSON.parse(jsonString);
+    return removeTrailingCommas(parsed);
+  }
+}
+
+/* ---------------------------------------------------
+   Stability helper for logos
+   (merged: still PNG data URLs; easy for frontend)
+--------------------------------------------------- */
 async function generateStabilityLogos(
   prompt: string,
   numImages: number
@@ -165,11 +224,11 @@ async function generateStabilityLogos(
 
   const results: string[] = [];
 
-  // Call the API once per image (simple and reliable)
   for (let i = 0; i < numImages; i++) {
     const formData = new FormData();
     formData.append("prompt", prompt);
     formData.append("output_format", "png");
+    // You can add style_preset/aspect_ratio here if you want stricter logos
 
     const resp = await fetch(endpoint, {
       method: "POST",
@@ -215,7 +274,7 @@ export async function POST(request: Request) {
     }
 
     // Fill prompt with user inputs
-    let finalPrompt = MASTER_PROMPT
+    const finalPrompt = MASTER_PROMPT
       .replaceAll("<<BRAND_NAME>>", brandName || "")
       .replaceAll("<<IDEA>>", idea)
       .replaceAll("<<TARGET_AUDIENCE>>", audience || "")
@@ -233,6 +292,8 @@ export async function POST(request: Request) {
         },
         body: JSON.stringify({
           model: "llama-3.1-8b-instant",
+          // Ask Groq to stay in JSON mode, but we still clean up
+          response_format: { type: "json_object" },
           messages: [{ role: "user", content: finalPrompt }],
           temperature: 0.2,
           max_tokens: 3500,
@@ -246,14 +307,14 @@ export async function POST(request: Request) {
     if (!groqResp.ok || groqJson.error) {
       return NextResponse.json(
         {
-          error: `Groq: ${groqJson.error?.message || "request failed"}`,
+          error: groqJson.error?.message || "Groq request failed",
           details: groqJson,
         },
         { status: 500 }
       );
     }
 
-    let content: string = groqJson.choices?.[0]?.message?.content || "";
+    let content: any = groqJson.choices?.[0]?.message?.content;
 
     if (!content) {
       return NextResponse.json(
@@ -265,61 +326,33 @@ export async function POST(request: Request) {
       );
     }
 
-    let raw = content.trim();
-
-    // Strip ```json or ``` fences if the model ever ignores instructions
-    if (raw.startsWith("```")) {
-      const firstBrace = raw.indexOf("{");
-      const lastBrace = raw.lastIndexOf("}");
-      if (firstBrace !== -1 && lastBrace !== -1) {
-        raw = raw.slice(firstBrace, lastBrace + 1);
-      }
-    }
-
-    // 2) Parse JSON returned by Groq (robust)
+    // content might already be an object (in strict JSON mode), or a JSON string
     let parsed: any;
-
     try {
-      parsed = JSON.parse(raw);
-    } catch (e1) {
-      console.warn("First JSON.parse failed, trying to slice braces:", e1);
-      const first = raw.indexOf("{");
-      const last = raw.lastIndexOf("}");
-
-      if (first === -1 || last === -1) {
-        console.error("Could not find JSON braces in Groq output:", raw);
-        return NextResponse.json(
-          {
-            error: "Model returned non‑JSON content.",
-            raw,
-          },
-          { status: 500 }
-        );
+      if (typeof content === "string") {
+        parsed = safeParseJSON(content.trim());
+      } else {
+        // already object-shaped
+        parsed = removeTrailingCommas(content);
       }
-
-      const sliced = raw.slice(first, last + 1);
-      try {
-        parsed = JSON.parse(sliced);
-      } catch (e2) {
-        console.error(
-          "Second JSON.parse failed, invalid JSON from model:",
-          e2,
-          "\nRAW (truncated):",
-          sliced.slice(0, 400)
-        );
-        return NextResponse.json(
-          {
-            error:
-              "Model returned invalid JSON (parse error: Expected ',' or ']' or similar).",
-            raw: sliced,
-          },
-          { status: 500 }
-        );
-      }
+    } catch (e) {
+      console.error(
+        "JSON parse failed even after cleanup:",
+        e,
+        "\nRAW (truncated):",
+        typeof content === "string" ? content.slice(0, 500) : content
+      );
+      return NextResponse.json(
+        {
+          error:
+            "Model returned invalid JSON even after cleanup. Try again with simpler inputs.",
+        },
+        { status: 500 }
+      );
     }
 
     // -----------------------------------------------------
-    // 2b) Normalize shape so frontend remains compatible
+    // Normalize shape so frontend remains compatible
     // -----------------------------------------------------
     if (parsed?.branding?.visualIdentity) {
       const vi = parsed.branding.visualIdentity;
@@ -341,8 +374,8 @@ export async function POST(request: Request) {
 
     // 4) Try Stability for real logos; fall back to placeholders if it fails
     let imageUrls: string[] = [
-      "https://via.placeholder.com/512?text=Logo1",
-      "https://via.placeholder.com/512?text=Logo2",
+      "https://dummyimage.com/512x512/111/aaa.png&text=Logo+1",
+      "https://dummyimage.com/512x512/111/aaa.png&text=Logo+2",
     ];
 
     try {

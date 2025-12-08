@@ -50,6 +50,7 @@ export default function HomePage() {
         if (data.result) {
           setResult(data.result);
           setHasGenerated(true);
+          setView("results");
         }
       } catch (e) {
         console.error("Failed to load from localStorage:", e);
@@ -82,6 +83,7 @@ export default function HomePage() {
                   }
                 : null,
             },
+            logos: result.logos ?? null,
           }
         : null;
 
@@ -618,7 +620,11 @@ export default function HomePage() {
 
   const renderContentPlanTab = () => {
     const contentPlan = result?.marketing?.contentPlan15Days;
-    if (!contentPlan || !Array.isArray(contentPlan) || contentPlan.length === 0) {
+    if (
+      !contentPlan ||
+      !Array.isArray(contentPlan) ||
+      contentPlan.length === 0
+    ) {
       return (
         <p className="text-sm text-purple-200/70">
           No content plan data returned yet.
@@ -694,24 +700,23 @@ export default function HomePage() {
                 >
                   <div className="aspect-square flex items-center justify-center bg-slate-900 rounded-lg overflow-hidden">
                     <img
-  src={url}
-  alt={`Logo ${idx + 1}`}
-  crossOrigin="anonymous"
-  className="w-full h-full object-contain p-2 group-hover:scale-110 transition-transform duration-300"
-  onError={(e) => {
-    const target = e.currentTarget as HTMLImageElement;
-    target.onerror = null;
-    target.src =
-      'data:image/svg+xml;utf8,' +
-      '<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512">' +
-      '<rect width="100%" height="100%" fill="%23111"/>' +
-      '<text x="50%" y="50%" fill="%23aaa" font-size="28" text-anchor="middle" dominant-baseline="middle">' +
-      'Logo%20Preview' +
-      '</text>' +
-      '</svg>';
-  }}
-/>
-
+                      src={url}
+                      alt={`Logo ${idx + 1}`}
+                      crossOrigin="anonymous"
+                      className="w-full h-full object-contain p-2 group-hover:scale-110 transition-transform duration-300"
+                      onError={(e) => {
+                        const target = e.currentTarget as HTMLImageElement;
+                        target.onerror = null;
+                        target.src =
+                          "data:image/svg+xml;utf8," +
+                          '<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512">' +
+                          '<rect width="100%" height="100%" fill="%23111"/>' +
+                          '<text x="50%" y="50%" fill="%23aaa" font-size="28" text-anchor="middle" dominant-baseline="middle">' +
+                          "Logo%20Preview" +
+                          "</text>" +
+                          "</svg>";
+                      }}
+                    />
                   </div>
                 </div>
               );
@@ -856,7 +861,11 @@ export default function HomePage() {
                     key={tab.id}
                     onClick={() =>
                       setActiveTab(
-                        tab.id as "overview" | "marketing" | "content" | "logos"
+                        tab.id as
+                          | "overview"
+                          | "marketing"
+                          | "content"
+                          | "logos"
                       )
                     }
                     className={`px-4 py-2 rounded-full text-sm font-medium border transition-all ${
@@ -909,5 +918,3 @@ export default function HomePage() {
     </main>
   );
 }
-
-
