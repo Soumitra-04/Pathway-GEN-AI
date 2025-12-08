@@ -63,31 +63,32 @@ Export requirements:
 `.trim();
 
 /* -----------------------------
-   Helper: call Hugging Face image model & return PNG data URLs
+   Hugging Face image model helper
 ----------------------------- */
 
-// You can change this to any image model that supports image generation.
-const HF_IMAGE_MODEL = "stabilityai/stable-diffusion-xl-base-1.0";
+const HF_IMAGE_MODEL =
+  process.env.HF_LOGO_MODEL_ID || "stabilityai/stable-diffusion-xl-base-1.0";
 
 async function generateHFLogos(
   prompt: string,
   numImages: number
-): Promise<string[]> {
+): Promise<{ images: string[]; error?: string }> {
   if (!process.env.HUGGINGFACE_API_KEY) {
-    console.warn("HUGGINGFACE_API_KEY not set, returning empty image list.");
-    return [];
+    const msg = "HUGGINGFACE_API_KEY not set on the server";
+    console.warn(msg);
+    return { images: [], error: msg };
   }
 
-  // New router endpoint (old api-inference is 410)
   const endpoint = `https://router.huggingface.co/models/${HF_IMAGE_MODEL}`;
-  const results: string[] = [];
+  const images: string[] = [];
+  let lastError: string | undefined;
 
   for (let i = 0; i < numImages; i++) {
     const resp = await fetch(endpoint, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${process.env.HUGGINGFACE_API_KEY}`,
-        Accept: "image/png",
+        Accept: "image/png, application/json",
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -95,12 +96,26 @@ async function generateHFLogos(
       }),
     });
 
+    const contentType = resp.headers.get("content-type") || "";
+
+    if (contentType.includes("application/json")) {
+      const jsonText = await resp.text();
+      lastError = `HF JSON response (status ${resp.status}): ${jsonText}`;
+      console.error(
+        "Hugging Face image JSON (/api/stability):",
+        resp.status,
+        jsonText.slice(0, 400)
+      );
+      break;
+    }
+
     if (!resp.ok) {
       const errText = await resp.text().catch(() => "");
+      lastError = `HF image error (status ${resp.status}): ${errText}`;
       console.error(
         "Hugging Face image API error (/api/stability):",
         resp.status,
-        errText.slice(0, 200)
+        errText.slice(0, 400)
       );
       break;
     }
@@ -108,10 +123,10 @@ async function generateHFLogos(
     const arrayBuffer = await resp.arrayBuffer();
     const base64 = Buffer.from(arrayBuffer).toString("base64");
     const dataUrl = `data:image/png;base64,${base64}`;
-    results.push(dataUrl);
+    images.push(dataUrl);
   }
 
-  return results;
+  return { images, error: lastError };
 }
 
 /* -----------------------------
@@ -143,10 +158,8 @@ export async function POST(request: Request) {
     let finalPrompt: string;
 
     if (prompt && prompt.trim()) {
-      // If a raw prompt is passed, let the user override the template
       finalPrompt = prompt.trim();
     } else {
-      // Otherwise, fill the master template with brand details
       finalPrompt = STABILITY_MASTER_PROMPT
         .replaceAll("{{BRAND_NAME}}", brandName || "the brand")
         .replaceAll("{{INDUSTRY}}", industry || "its industry")
@@ -157,7 +170,6 @@ export async function POST(request: Request) {
         );
     }
 
-    // Cap at 4 images, default 2
     const imagesRequested =
       Number.isFinite(numImages) && (numImages as number) > 0
         ? Math.min(Number(numImages), 4)
@@ -170,19 +182,29 @@ export async function POST(request: Request) {
       );
     }
 
-    const urls = await generateHFLogos(finalPrompt, imagesRequested);
+    const { images, error } = await generateHFLogos(
+      finalPrompt,
+      imagesRequested
+    );
 
-    if (!urls.length) {
+    if (!images.length) {
       return NextResponse.json(
-        { error: "Hugging Face response did not contain any image data" },
-        { status: 500 }
+        {
+          error:
+            error ||
+            "Hugging Face did not return any image data. Check model permissions / plan.",
+          promptUsed: finalPrompt,
+          hfModelId: HF_IMAGE_MODEL,
+        },
+        { status: 502 }
       );
     }
 
     return NextResponse.json(
       {
         promptUsed: finalPrompt,
-        imageUrls: urls,
+        imageUrls: images,
+        hfModelId: HF_IMAGE_MODEL,
       },
       { status: 200 }
     );

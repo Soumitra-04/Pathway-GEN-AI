@@ -198,26 +198,30 @@ function safeParseJSON(raw: string): any {
    Hugging Face helper for logos (image only)
 --------------------------------------------------- */
 
-const HF_IMAGE_MODEL = "stabilityai/stable-diffusion-xl-base-1.0";
+// if you want, set HF_LOGO_MODEL_ID=stabilityai/stable-diffusion-xl-base-1.0 in .env
+const HF_IMAGE_MODEL =
+  process.env.HF_LOGO_MODEL_ID || "stabilityai/stable-diffusion-xl-base-1.0";
 
 async function generateHFLogos(
   prompt: string,
   numImages: number
-): Promise<string[]> {
+): Promise<{ images: string[]; error?: string }> {
   if (!process.env.HUGGINGFACE_API_KEY) {
-    console.warn("HUGGINGFACE_API_KEY not set, returning placeholder logos.");
-    return [];
+    const msg = "HUGGINGFACE_API_KEY not set on the server";
+    console.warn(msg);
+    return { images: [], error: msg };
   }
 
   const endpoint = `https://router.huggingface.co/models/${HF_IMAGE_MODEL}`;
-  const results: string[] = [];
+  const images: string[] = [];
+  let lastError: string | undefined;
 
   for (let i = 0; i < numImages; i++) {
     const resp = await fetch(endpoint, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${process.env.HUGGINGFACE_API_KEY}`,
-        Accept: "image/png",
+        Accept: "image/png, application/json",
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -225,12 +229,26 @@ async function generateHFLogos(
       }),
     });
 
+    const contentType = resp.headers.get("content-type") || "";
+
+    if (contentType.includes("application/json")) {
+      const jsonText = await resp.text();
+      lastError = `HF JSON response (status ${resp.status}): ${jsonText}`;
+      console.error(
+        "Hugging Face image JSON (/api/generate):",
+        resp.status,
+        jsonText.slice(0, 400)
+      );
+      break;
+    }
+
     if (!resp.ok) {
       const errText = await resp.text().catch(() => "");
+      lastError = `HF image error (status ${resp.status}): ${errText}`;
       console.error(
         "Hugging Face image API error (/api/generate):",
         resp.status,
-        errText.slice(0, 200)
+        errText.slice(0, 400)
       );
       break;
     }
@@ -238,10 +256,10 @@ async function generateHFLogos(
     const arrayBuffer = await resp.arrayBuffer();
     const base64 = Buffer.from(arrayBuffer).toString("base64");
     const dataUrl = `data:image/png;base64,${base64}`;
-    results.push(dataUrl);
+    images.push(dataUrl);
   }
 
-  return results;
+  return { images, error: lastError };
 }
 
 // ---------------------------------------------------------
@@ -358,19 +376,29 @@ export async function POST(request: Request) {
       "https://dummyimage.com/512x512/111/aaa.png&text=Logo+1",
       "https://dummyimage.com/512x512/111/aaa.png&text=Logo+2",
     ];
+    let usedFallback = false;
+    let hfError: string | undefined;
 
     try {
-      const hfUrls = await generateHFLogos(logoPrompt, 2);
-      if (hfUrls.length) {
-        imageUrls = hfUrls;
+      const { images, error } = await generateHFLogos(logoPrompt, 2);
+      if (images.length) {
+        imageUrls = images;
+      } else {
+        usedFallback = true;
+        hfError = error;
       }
-    } catch (e) {
+    } catch (e: any) {
+      usedFallback = true;
+      hfError = e?.message || String(e);
       console.error("HF image call from /api/generate failed:", e);
     }
 
     parsed.logos = {
       promptUsed: logoPrompt,
       imageUrls,
+      usedFallback,
+      hfError: hfError || null,
+      hfModelId: HF_IMAGE_MODEL,
     };
 
     return NextResponse.json(parsed, { status: 200 });
