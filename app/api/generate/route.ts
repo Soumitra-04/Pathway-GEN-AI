@@ -2,8 +2,7 @@
 import { NextResponse } from "next/server";
 
 // ---------------------------------------------------------
-// MASTER PROMPT (world‑class Brand Strategist + full JSON)
-// (merged – same structure you both used, UNCHANGED)
+// MASTER PROMPT (world-class Brand Strategist + full JSON)
 // ---------------------------------------------------------
 const MASTER_PROMPT = `
 You are a world-class Brand Strategist + Business Consultant AI with 15+ years of expertise in consumer psychology, brand positioning, and startup advisory.
@@ -186,6 +185,7 @@ function safeParseJSON(raw: string): any {
 
     let jsonString = raw.slice(first, last + 1);
 
+    // remove trailing commas before ] or }
     jsonString = jsonString.replace(/,\s*(\]|\})/g, "$1").trim();
     jsonString = normalizeBadQuotes(jsonString);
 
@@ -198,9 +198,9 @@ function safeParseJSON(raw: string): any {
    Hugging Face helper for logos (image only)
 --------------------------------------------------- */
 
-// if you want, set HF_LOGO_MODEL_ID=stabilityai/stable-diffusion-xl-base-1.0 in .env
+// default HF image model
 const HF_IMAGE_MODEL =
-  process.env.HF_LOGO_MODEL_ID || "stabilityai/stable-diffusion-xl-base-1.0";
+  process.env.HF_LOGO_MODEL_ID || "stabilityai/stable-diffusion-2-1";
 
 async function generateHFLogos(
   prompt: string,
@@ -212,54 +212,163 @@ async function generateHFLogos(
     return { images: [], error: msg };
   }
 
-  const endpoint = `https://router.huggingface.co/models/${HF_IMAGE_MODEL}`;
+  // router-based Inference endpoint
+  const endpoint = `https://router.huggingface.co/hf-inference/models/${HF_IMAGE_MODEL}`;
+
   const images: string[] = [];
   let lastError: string | undefined;
 
   for (let i = 0; i < numImages; i++) {
-    const resp = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.HUGGINGFACE_API_KEY}`,
-        Accept: "image/png, application/json",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        inputs: prompt,
-      }),
-    });
+    try {
+      const resp = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.HUGGINGFACE_API_KEY}`,
+          Accept: "image/png", // important: request image only
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          inputs: prompt,
+          parameters: {
+            guidance_scale: 7,
+            num_inference_steps: 28,
+          },
+        }),
+      });
 
-    const contentType = resp.headers.get("content-type") || "";
+      const contentType = (resp.headers.get("content-type") || "").toLowerCase();
 
-    if (contentType.includes("application/json")) {
-      const jsonText = await resp.text();
-      lastError = `HF JSON response (status ${resp.status}): ${jsonText}`;
-      console.error(
-        "Hugging Face image JSON (/api/generate):",
-        resp.status,
-        jsonText.slice(0, 400)
-      );
+      if (contentType.includes("application/json")) {
+        const jsonText = await resp.text().catch(() => "");
+        lastError = `HF JSON response (status ${resp.status}): ${jsonText}`;
+        console.error(
+          "Hugging Face image JSON (/api/generate):",
+          resp.status,
+          jsonText.slice(0, 800)
+        );
+        break;
+      }
+
+      if (!resp.ok) {
+        const errText = await resp.text().catch(() => "");
+        lastError = `HF image error (status ${resp.status}): ${errText}`;
+        console.error(
+          "Hugging Face image API error (/api/generate):",
+          resp.status,
+          errText.slice(0, 800)
+        );
+        if (resp.status === 503 || resp.status === 429 || resp.status === 410) {
+          break;
+        }
+        break;
+      }
+
+      const arrayBuffer = await resp.arrayBuffer();
+      const base64 = Buffer.from(arrayBuffer).toString("base64");
+      const dataUrl = `data:image/png;base64,${base64}`;
+      images.push(dataUrl);
+    } catch (e: any) {
+      lastError = e?.message || String(e);
+      console.error("HF image call from /api/generate failed:", lastError);
       break;
     }
-
-    if (!resp.ok) {
-      const errText = await resp.text().catch(() => "");
-      lastError = `HF image error (status ${resp.status}): ${errText}`;
-      console.error(
-        "Hugging Face image API error (/api/generate):",
-        resp.status,
-        errText.slice(0, 400)
-      );
-      break;
-    }
-
-    const arrayBuffer = await resp.arrayBuffer();
-    const base64 = Buffer.from(arrayBuffer).toString("base64");
-    const dataUrl = `data:image/png;base64,${base64}`;
-    images.push(dataUrl);
   }
 
   return { images, error: lastError };
+}
+
+/* ---------------------------------------------------
+   Groq helper with JSON-safe fallback
+--------------------------------------------------- */
+
+type GroqResult =
+  | { ok: true; content: string; raw: any }
+  | { ok: false; errorMessage: string; raw: any };
+
+async function callGroqWithFallback(prompt: string): Promise<GroqResult> {
+  const endpoint = "https://api.groq.com/openai/v1/chat/completions";
+
+  async function call(useResponseFormat: boolean) {
+    const body: any = {
+      model: "llama-3.1-8b-instant",
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.2,
+      max_tokens: 3500,
+    };
+
+    if (useResponseFormat) {
+      body.response_format = { type: "json_object" };
+    }
+
+    const resp = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+      },
+      body: JSON.stringify(body),
+    });
+
+    const json = await resp.json();
+    console.log(
+      `GROQ RAW JSON (useResponseFormat=${useResponseFormat}):`,
+      JSON.stringify(json, null, 2)
+    );
+
+    return { resp, json };
+  }
+
+  // 1) Try strict JSON mode first
+  const first = await call(true);
+  if (!first.resp.ok || first.json?.error) {
+    const err = first.json?.error;
+    if (err?.code === "json_validate_failed") {
+      console.warn(
+        "Groq JSON validation failed, retrying without response_format..."
+      );
+      // 2) Retry once without response_format, we’ll clean JSON ourselves
+      const second = await call(false);
+      if (!second.resp.ok || second.json?.error) {
+        return {
+          ok: false,
+          errorMessage:
+            second.json?.error?.message ||
+            "Groq request failed even after fallback",
+          raw: second.json,
+        };
+      }
+      const content = second.json.choices?.[0]?.message?.content;
+      if (!content || typeof content !== "string") {
+        return {
+          ok: false,
+          errorMessage:
+            "Groq fallback response missing choices[0].message.content",
+          raw: second.json,
+        };
+      }
+      return { ok: true, content, raw: second.json };
+    }
+
+    // some other error
+    return {
+      ok: false,
+      errorMessage: err?.message || "Groq request failed",
+      raw: first.json,
+    };
+  }
+
+  // strict JSON success: Groq guarantees valid JSON string here
+  const content = first.json.choices?.[0]?.message?.content;
+  if (!content || typeof content !== "string") {
+    return {
+      ok: false,
+      errorMessage:
+        "Groq response missing choices[0].message.content in strict JSON mode",
+      raw: first.json,
+    };
+  }
+
+  return { ok: true, content, raw: first.json };
 }
 
 // ---------------------------------------------------------
@@ -286,44 +395,14 @@ export async function POST(request: Request) {
       .replaceAll("<<TONE>>", tone || "")
       .replaceAll("<<INDUSTRY>>", industry || "");
 
-    // 1) Groq for brand JSON  ✅ (TEXT ONLY)
-    const groqResp = await fetch(
-      "https://api.groq.com/openai/v1/chat/completions",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
-        },
-        body: JSON.stringify({
-          model: "llama-3.1-8b-instant",
-          response_format: { type: "json_object" },
-          messages: [{ role: "user", content: finalPrompt }],
-          temperature: 0.2,
-          max_tokens: 3500,
-        }),
-      }
-    );
+    // 1) Groq for brand JSON  ✅ (with fallback)
+    const groqResult = await callGroqWithFallback(finalPrompt);
 
-    const groqJson = await groqResp.json();
-    console.log("GROQ RAW JSON:", JSON.stringify(groqJson, null, 2));
-
-    if (!groqResp.ok || groqJson.error) {
+    if (!groqResult.ok) {
       return NextResponse.json(
         {
-          error: groqJson.error?.message || "Groq request failed",
-          details: groqJson,
-        },
-        { status: 500 }
-      );
-    }
-
-    let content: any = groqJson.choices?.[0]?.message?.content;
-    if (!content) {
-      return NextResponse.json(
-        {
-          error: "Groq response missing choices[0].message.content",
-          raw: groqJson,
+          error: groqResult.errorMessage,
+          details: groqResult.raw,
         },
         { status: 500 }
       );
@@ -331,17 +410,14 @@ export async function POST(request: Request) {
 
     let parsed: any;
     try {
-      if (typeof content === "string") {
-        parsed = safeParseJSON(content.trim());
-      } else {
-        parsed = removeTrailingCommas(content);
-      }
+      // content is always a string here
+      parsed = safeParseJSON(groqResult.content.trim());
     } catch (e) {
       console.error(
         "JSON parse failed even after cleanup:",
         e,
         "\nRAW (truncated):",
-        typeof content === "string" ? content.slice(0, 500) : content
+        groqResult.content.slice(0, 500)
       );
       return NextResponse.json(
         {

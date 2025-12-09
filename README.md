@@ -22,7 +22,7 @@ A GenAI-powered system that helps users build their personal brand — including
 - Finalize JSON structure
 - Write Groq master prompt
 - Test on Groq Playground
-- Created:1.pages\api\generateBrand\route.ts
+- Created:1.pages\api\generate\route.ts
         2.Created API KEY
 
 ## DAY 3

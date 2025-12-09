@@ -1,26 +1,24 @@
-// app/api/stability/route.ts
 import { NextResponse } from "next/server";
 
 /* -----------------------------
    MASTER PROMPT FOR LOGO REGEN
-   (Merged Shreeya + Soumitra – UNCHANGED)
 ----------------------------- */
 
-const STABILITY_MASTER_PROMPT = `
-You are an expert brand designer AI. Generate minimal, modern, high-quality vector-style logo concepts based on the brand details below.
+const HF_LOGO_MASTER_PROMPT = `
+You are an expert brand designer AI. Generate minimal, modern, high-quality logo concepts based on the brand details below.
 
 Design requirements:
-- Clean, professional, and scalable logo symbol
-- Suitable for website header, app icon, social media, and product packaging
+- Clean, professional, and scalable logo
+- Suitable for website header, social media, and product packaging
 - Flat or semi-flat design (strictly no 3D, no gradients)
 - No mockups, no scenes, no devices
 - No shadows, no lighting effects, no textures
-- Centered geometric composition
+- Centered composition
 - High contrast with clear geometry
-- SVG-icon style with sharp edges and perfect edge clarity
-- Plain white (#FFFFFF) or fully transparent background
+- Vector-style or SVG-like appearance
+- Plain white or fully transparent background
 - Avoid letters, words, or typography unless explicitly requested
-- Logo should work at very small sizes (favicon / app icon ready)
+- Logo should work at very small sizes (icon-ready)
 
 Brand details:
 Brand Name: {{BRAND_NAME}}
@@ -31,102 +29,91 @@ Target Audience: {{TARGET_AUDIENCE}}
 Style guidance:
 - Modern
 - Premium
-- Timeless and iconic
+- Timeless
 - Elegant but simple
-- Symbol-focused, not text-focused
+- Symbol or emblem focused
 
-Color guidance:
-- Limited palette (1–3 colors max)
+Color guidance (optional):
+- Use a limited color palette (1–3 colors max)
 - Prefer elegant, brand-safe colors
-- Avoid neon, pastel, or oversaturated tones
+- Avoid neon, pastel, or overly saturated colors
 
 Output instructions:
-- Generate visually distinct logo symbols
-- Focus on abstract marks, emblems, or minimalist icons
-- Original design only
-- No background patterns or decoration
-- No mockups, no watermarks, no text in image
+- Focus on a single strong, abstract symbol or emblem
+- Symbol should be iconic and recognizable even as a small app icon
+- No text, no typography, no letters
+- No background patterns or decorations
 
-Advanced quality requirements:
-- Prioritize symmetry, golden ratio balance, and harmonious proportions
-- Symbolism connected to industry and customer psychology
-- Every shape must communicate meaning intelligently (no random shapes)
-- Must look like a global brand symbol
-- Works on light and dark UI themes
-- Minimal padding — symbol centered in a 1:1 square frame
-
-Export requirements:
-- Square 1:1 composition
-- High resolution
-- PNG output suitable for web and print
-- Pure white or transparent background only
+Goal:
+Generate a premium, elegant, ultra-clean brand logo symbol that looks like it belongs to a successful global brand, ready for website header, business card, product print, and mobile app icon.
 `.trim();
 
 /* -----------------------------
-   Hugging Face image model helper
+   Helper: call Hugging Face & return data URLs
 ----------------------------- */
 
-const HF_IMAGE_MODEL =
-  process.env.HF_LOGO_MODEL_ID || "stabilityai/stable-diffusion-xl-base-1.0";
-
-async function generateHFLogos(
+async function generateHuggingFaceLogos(
   prompt: string,
   numImages: number
-): Promise<{ images: string[]; error?: string }> {
-  if (!process.env.HUGGINGFACE_API_KEY) {
-    const msg = "HUGGINGFACE_API_KEY not set on the server";
-    console.warn(msg);
-    return { images: [], error: msg };
+): Promise<string[]> {
+  const apiKey = process.env.HUGGINGFACE_API_KEY;
+  const modelId =
+    process.env.HF_LOGO_MODEL_ID || "black-forest-labs/FLUX.1-dev";
+
+  if (!apiKey) {
+    console.warn("HUGGINGFACE_API_KEY not set, cannot generate logos.");
+    return [];
   }
 
-  const endpoint = `https://router.huggingface.co/models/${HF_IMAGE_MODEL}`;
-  const images: string[] = [];
-  let lastError: string | undefined;
+  // 🔴 OLD (no longer supported):
+  // const endpoint = `https://api-inference.huggingface.co/models/${modelId}`;
+
+  // ✅ NEW: use router.huggingface.co
+  const endpoint = `https://router.huggingface.co/hf-inference/models/${modelId}`;
+
+  const results: string[] = [];
 
   for (let i = 0; i < numImages; i++) {
-    const resp = await fetch(endpoint, {
+    const res = await fetch(endpoint, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${process.env.HUGGINGFACE_API_KEY}`,
-        Accept: "image/png, application/json",
+        Authorization: `Bearer ${apiKey}`,
+        Accept: "image/png",
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
         inputs: prompt,
+        // optional tuning params – safe defaults
+        parameters: {
+          guidance_scale: 7,
+          num_inference_steps: 28,
+        },
       }),
     });
 
-    const contentType = resp.headers.get("content-type") || "";
-
-    if (contentType.includes("application/json")) {
-      const jsonText = await resp.text();
-      lastError = `HF JSON response (status ${resp.status}): ${jsonText}`;
+    if (!res.ok) {
+      const errText = await res.text().catch(() => "");
       console.error(
-        "Hugging Face image JSON (/api/stability):",
-        resp.status,
-        jsonText.slice(0, 400)
+        "Hugging Face logo API error (/api/stability):",
+        res.status,
+        errText.slice(0, 200)
       );
-      break;
+
+      // If model is loading or rate-limited, don't keep hammering
+      if (res.status === 503 || res.status === 429 || res.status === 410) {
+        break;
+      }
+
+      continue;
     }
 
-    if (!resp.ok) {
-      const errText = await resp.text().catch(() => "");
-      lastError = `HF image error (status ${resp.status}): ${errText}`;
-      console.error(
-        "Hugging Face image API error (/api/stability):",
-        resp.status,
-        errText.slice(0, 400)
-      );
-      break;
-    }
-
-    const arrayBuffer = await resp.arrayBuffer();
-    const base64 = Buffer.from(arrayBuffer).toString("base64");
+    const buffer = await res.arrayBuffer();
+    const base64 = Buffer.from(buffer).toString("base64");
     const dataUrl = `data:image/png;base64,${base64}`;
-    images.push(dataUrl);
+    results.push(dataUrl);
   }
 
-  return { images, error: lastError };
+  return results;
 }
 
 /* -----------------------------
@@ -154,13 +141,13 @@ export async function POST(request: Request) {
       numImages,
     } = body;
 
-    // 1) Build final prompt (either raw or templated)
+    // 1) Build final prompt (either raw prompt or templated prompt)
     let finalPrompt: string;
 
     if (prompt && prompt.trim()) {
       finalPrompt = prompt.trim();
     } else {
-      finalPrompt = STABILITY_MASTER_PROMPT
+      finalPrompt = HF_LOGO_MASTER_PROMPT
         .replaceAll("{{BRAND_NAME}}", brandName || "the brand")
         .replaceAll("{{INDUSTRY}}", industry || "its industry")
         .replaceAll("{{TONE}}", tone || "modern, premium")
@@ -182,34 +169,24 @@ export async function POST(request: Request) {
       );
     }
 
-    const { images, error } = await generateHFLogos(
-      finalPrompt,
-      imagesRequested
-    );
+    const urls = await generateHuggingFaceLogos(finalPrompt, imagesRequested);
 
-    if (!images.length) {
+    if (!urls.length) {
       return NextResponse.json(
-        {
-          error:
-            error ||
-            "Hugging Face did not return any image data. Check model permissions / plan.",
-          promptUsed: finalPrompt,
-          hfModelId: HF_IMAGE_MODEL,
-        },
-        { status: 502 }
+        { error: "Hugging Face response did not contain any image data" },
+        { status: 500 }
       );
     }
 
     return NextResponse.json(
       {
         promptUsed: finalPrompt,
-        imageUrls: images,
-        hfModelId: HF_IMAGE_MODEL,
+        imageUrls: urls,
       },
       { status: 200 }
     );
   } catch (error: any) {
-    console.error("HF STABILITY SERVER ERROR (/api/stability):", error);
+    console.error("HF SERVER ERROR (/api/stability):", error);
     return NextResponse.json(
       { error: error?.message || "Unexpected server error" },
       { status: 500 }
