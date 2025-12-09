@@ -155,6 +155,7 @@ export default function HomePage() {
         setResult(data);
         setView("results");
         setActiveTab("overview");
+        setHasGenerated(true); // ensure "View last result" becomes available
       }
     } catch (err: any) {
       setError(err.message || "Network error occurred");
@@ -210,6 +211,7 @@ export default function HomePage() {
             imageUrls: data.imageUrls,
           },
         }));
+        setHasGenerated(true);
       }
     } catch (err: any) {
       setError(err.message || "Network error while regenerating logo");
@@ -243,7 +245,10 @@ export default function HomePage() {
         const htmlEl = el as HTMLElement;
         try {
           const computed = window.getComputedStyle(htmlEl);
-          if (computed.backgroundColor && !computed.backgroundColor.includes("lab")) {
+          if (
+            computed.backgroundColor &&
+            !computed.backgroundColor.includes("lab")
+          ) {
             htmlEl.style.backgroundColor = computed.backgroundColor;
           }
           if (computed.color && !computed.color.includes("lab")) {
@@ -273,7 +278,11 @@ export default function HomePage() {
                 const color = computed.color;
                 const bgColor = computed.backgroundColor;
 
-                if (color && !color.includes("lab") && !color.includes("oklab")) {
+                if (
+                  color &&
+                  !color.includes("lab") &&
+                  !color.includes("oklab")
+                ) {
                   htmlEl.style.color = color;
                 }
                 if (
@@ -471,7 +480,7 @@ export default function HomePage() {
     const industryValue =
       industry || strategy?.industry || business?.industry || null;
 
-    // --- NEW: pull detailed "business plan" fields ---
+    // --- business plan fields ---
     const idealCustomerProfile = business?.idealCustomerProfile;
     const painPoints = business?.painPoints;
     const businessModel = business?.businessModel;
@@ -581,8 +590,7 @@ export default function HomePage() {
           </div>
         )}
 
-        {/* --- NEW: Business plan sections --- */}
-
+        {/* Business plan sections */}
         {idealCustomerProfile && (
           <div className="space-y-3">
             <div className="text-xs text-purple-300/80 uppercase tracking-wide font-medium">
@@ -1110,6 +1118,30 @@ export default function HomePage() {
         {/* INPUT PAGE */}
         {view === "input" && (
           <div className="rounded-2xl p-6 md:p-8 animate-fade-up shadow-2xl bg-slate-950/70 border border-purple-500/40">
+            {/* Header row + single 'View last result' button */}
+            <div className="flex items-center justify-between mb-6 gap-3">
+              <div>
+                <h2 className="text-xl md:text-2xl font-semibold text-slate-50">
+                  Enter your brand idea
+                </h2>
+                <p className="text-sm text-purple-200/80 mt-1">
+                  Pathway GEN AI will generate strategy, marketing, content and
+                  logos in one shot.
+                </p>
+              </div>
+              {hasGenerated && result && (
+                <button
+                  onClick={() => {
+                    setView("results");
+                    setActiveTab("overview");
+                  }}
+                  className="hidden sm:inline-flex items-center px-4 py-2 rounded-full text-xs font-semibold bg-slate-900 border border-purple-500/50 text-purple-100 hover:bg-slate-800"
+                >
+                  View last result →
+                </button>
+              )}
+            </div>
+
             <div className="space-y-5">
               <input
                 type="text"
