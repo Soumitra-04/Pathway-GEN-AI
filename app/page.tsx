@@ -1,6 +1,8 @@
 // page.tsx
-"use client";
 
+
+"use client";
+import Link from "next/link";
 import React, { useState, useRef, useEffect } from "react";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
@@ -1270,7 +1272,12 @@ export default function HomePage() {
                 {activeTab === "logos" && renderLogosTab()}
               </div>
             </div>
-
+                <Link
+                href="/future"
+                className="inline-flex items-center gap-2 text-sm text-purple-200 hover:text-purple-100 px-3 py-1 rounded-full bg-slate-900/80 border border-purple-500/40"
+              >
+                🔮 View Brand Future Insights
+            </Link>
             {/* JSON Debug Viewer - optional dev mode */}
             <div className="rounded-xl p-4 bg-slate-950/80 border border-purple-500/30">
               <button
