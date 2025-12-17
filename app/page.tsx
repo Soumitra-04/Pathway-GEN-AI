@@ -1,15 +1,39 @@
-// page.tsx
-
-
 "use client";
 import Link from "next/link";
 import React, { useState, useRef, useEffect } from "react";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 
+// --- FIREBASE & NAVIGATION IMPORTS ---
+import { auth } from "@/lib/firebase"; 
+import { signOut, onAuthStateChanged } from "firebase/auth";
+import { useRouter } from "next/navigation";
+
 type ResultType = any;
 
 export default function HomePage() {
+  const router = useRouter();
+
+  // --- AUTH PROTECTION: Redirect to login if no user ---
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (!user) {
+        router.push("/login"); // Securely redirects unauthorized users
+      }
+    });
+    return () => unsubscribe();
+  }, [router]);
+
+  // --- LOGOUT HANDLER ---
+  const handleLogout = async () => {
+    try {
+      await signOut(auth); // Terminates Firebase session
+      router.push("/login");
+    } catch (err: any) {
+      console.error("Logout failed:", err.message);
+    }
+  };
+
   // Required state variables
   const [brandName, setBrandName] = useState("");
   const [idea, setIdea] = useState("");
@@ -1069,7 +1093,16 @@ export default function HomePage() {
     <main className="min-h-screen pb-16 bg-gradient-to-br from-slate-950 via-slate-950 to-slate-900 text-slate-50">
       {/* Header Section */}
       <div className="pt-12 pb-8 px-4 animate-fade-up">
-        <div className="max-w-5xl mx-auto text-center">
+        <div className="max-w-5xl mx-auto text-center relative">
+          
+          {/* --- LOGOUT BUTTON --- */}
+          <button 
+            onClick={handleLogout}
+            className="absolute right-0 top-0 px-4 py-2 text-sm font-medium text-purple-200 bg-slate-900/50 border border-purple-500/30 rounded-full hover:bg-red-900/20 hover:text-red-200 transition-all z-10"
+          >
+            Logout
+          </button>
+
           <h1 className="text-5xl md:text-6xl font-bold mb-3 bg-clip-text text-transparent bg-gradient-to-r from-pink-500 via-purple-400 to-blue-500 drop-shadow-[0_0_20px_rgba(168,85,247,0.65)]">
             Pathway GEN AI – Brand Generator
           </h1>
