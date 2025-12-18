@@ -1,5 +1,15 @@
 // app/api/generate/route.ts
 import { NextResponse } from "next/server";
+import { db } from "@/lib/firebase"; 
+import { 
+  doc, 
+  getDoc, 
+  updateDoc, 
+  collection, 
+  addDoc, 
+  serverTimestamp, 
+  increment 
+} from "firebase/firestore";
 
 // ---------------------------------------------------------
 // MASTER PROMPT (world-class Brand Strategist + full JSON)
@@ -48,7 +58,7 @@ JSON to return:
         "desiredOutcome": "",
         "solutionOffered": "",
         "competingSolutions": "",
-        "whyWeAreBetter": ""
+        "why we are better": ""
       }
     ],
     "competitorAnalysis": [
@@ -149,9 +159,8 @@ Rules:
 `.trim();
 
 /* ---------------------------------------------------
-   Cleanup helpers to survive messy model JSON
+   Cleanup helpers
 --------------------------------------------------- */
-
 function removeTrailingCommas(obj: any): any {
   if (Array.isArray(obj)) {
     return obj.filter((el) => el !== undefined).map(removeTrailingCommas);
@@ -182,39 +191,22 @@ function safeParseJSON(raw: string): any {
     if (first === -1 || last === -1) {
       throw new Error("Failed to extract JSON block from model output.");
     }
-
     let jsonString = raw.slice(first, last + 1);
-
-    // remove trailing commas before ] or }
     jsonString = jsonString.replace(/,\s*(\]|\})/g, "$1").trim();
     jsonString = normalizeBadQuotes(jsonString);
-
     const parsed = JSON.parse(jsonString);
     return removeTrailingCommas(parsed);
   }
 }
 
 /* ---------------------------------------------------
-   Hugging Face helper for logos (image only)
+   Hugging Face helper
 --------------------------------------------------- */
+const HF_IMAGE_MODEL = process.env.HF_LOGO_MODEL_ID || "stabilityai/stable-diffusion-2-1";
 
-// default HF image model
-const HF_IMAGE_MODEL =
-  process.env.HF_LOGO_MODEL_ID || "stabilityai/stable-diffusion-2-1";
-
-async function generateHFLogos(
-  prompt: string,
-  numImages: number
-): Promise<{ images: string[]; error?: string }> {
-  if (!process.env.HUGGINGFACE_API_KEY) {
-    const msg = "HUGGINGFACE_API_KEY not set on the server";
-    console.warn(msg);
-    return { images: [], error: msg };
-  }
-
-  // router-based Inference endpoint
+async function generateHFLogos(prompt: string, numImages: number): Promise<{ images: string[]; error?: string }> {
+  if (!process.env.HUGGINGFACE_API_KEY) return { images: [], error: "Missing Key" };
   const endpoint = `https://router.huggingface.co/hf-inference/models/${HF_IMAGE_MODEL}`;
-
   const images: string[] = [];
   let lastError: string | undefined;
 
@@ -224,265 +216,91 @@ async function generateHFLogos(
         method: "POST",
         headers: {
           Authorization: `Bearer ${process.env.HUGGINGFACE_API_KEY}`,
-          Accept: "image/png", // important: request image only
+          Accept: "image/png",
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          inputs: prompt,
-          parameters: {
-            guidance_scale: 7,
-            num_inference_steps: 28,
-          },
-        }),
+        body: JSON.stringify({ inputs: prompt }),
       });
-
-      const contentType = (resp.headers.get("content-type") || "").toLowerCase();
-
-      if (contentType.includes("application/json")) {
-        const jsonText = await resp.text().catch(() => "");
-        lastError = `HF JSON response (status ${resp.status}): ${jsonText}`;
-        console.error(
-          "Hugging Face image JSON (/api/generate):",
-          resp.status,
-          jsonText.slice(0, 800)
-        );
-        break;
-      }
-
-      if (!resp.ok) {
-        const errText = await resp.text().catch(() => "");
-        lastError = `HF image error (status ${resp.status}): ${errText}`;
-        console.error(
-          "Hugging Face image API error (/api/generate):",
-          resp.status,
-          errText.slice(0, 800)
-        );
-        if (resp.status === 503 || resp.status === 429 || resp.status === 410) {
-          break;
-        }
-        break;
-      }
-
+      if (!resp.ok) { lastError = `HF error ${resp.status}`; break; }
       const arrayBuffer = await resp.arrayBuffer();
-      const base64 = Buffer.from(arrayBuffer).toString("base64");
-      const dataUrl = `data:image/png;base64,${base64}`;
-      images.push(dataUrl);
-    } catch (e: any) {
-      lastError = e?.message || String(e);
-      console.error("HF image call from /api/generate failed:", lastError);
-      break;
-    }
+      images.push(`data:image/png;base64,${Buffer.from(arrayBuffer).toString("base64")}`);
+    } catch (e: any) { lastError = e?.message; break; }
   }
-
   return { images, error: lastError };
 }
 
 /* ---------------------------------------------------
-   Groq helper with JSON-safe fallback
+   Groq helper
 --------------------------------------------------- */
-
-type GroqResult =
-  | { ok: true; content: string; raw: any }
-  | { ok: false; errorMessage: string; raw: any };
-
-async function callGroqWithFallback(prompt: string): Promise<GroqResult> {
+async function callGroqWithFallback(prompt: string) {
   const endpoint = "https://api.groq.com/openai/v1/chat/completions";
-
   async function call(useResponseFormat: boolean) {
-    const body: any = {
-      model: "llama-3.1-8b-instant",
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.2,
-      max_tokens: 3500,
-    };
-
-    if (useResponseFormat) {
-      body.response_format = { type: "json_object" };
-    }
-
-    const resp = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
-      },
-      body: JSON.stringify(body),
-    });
-
-    const json = await resp.json();
-    console.log(
-      `GROQ RAW JSON (useResponseFormat=${useResponseFormat}):`,
-      JSON.stringify(json, null, 2)
-    );
-
-    return { resp, json };
+    const body: any = { model: "llama-3.1-8b-instant", messages: [{ role: "user", content: prompt }], temperature: 0.2, max_tokens: 3500 };
+    if (useResponseFormat) body.response_format = { type: "json_object" };
+    const resp = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.GROQ_API_KEY}` }, body: JSON.stringify(body) });
+    return { resp, json: await resp.json() };
   }
-
-  // 1) Try strict JSON mode first
   const first = await call(true);
   if (!first.resp.ok || first.json?.error) {
-    const err = first.json?.error;
-    if (err?.code === "json_validate_failed") {
-      console.warn(
-        "Groq JSON validation failed, retrying without response_format..."
-      );
-      // 2) Retry once without response_format, we’ll clean JSON ourselves
-      const second = await call(false);
-      if (!second.resp.ok || second.json?.error) {
-        return {
-          ok: false,
-          errorMessage:
-            second.json?.error?.message ||
-            "Groq request failed even after fallback",
-          raw: second.json,
-        };
-      }
-      const content = second.json.choices?.[0]?.message?.content;
-      if (!content || typeof content !== "string") {
-        return {
-          ok: false,
-          errorMessage:
-            "Groq fallback response missing choices[0].message.content",
-          raw: second.json,
-        };
-      }
-      return { ok: true, content, raw: second.json };
-    }
-
-    // some other error
-    return {
-      ok: false,
-      errorMessage: err?.message || "Groq request failed",
-      raw: first.json,
-    };
+    const second = await call(false);
+    return { ok: second.resp.ok, content: second.json.choices?.[0]?.message?.content, raw: second.json };
   }
-
-  // strict JSON success: Groq guarantees valid JSON string here
-  const content = first.json.choices?.[0]?.message?.content;
-  if (!content || typeof content !== "string") {
-    return {
-      ok: false,
-      errorMessage:
-        "Groq response missing choices[0].message.content in strict JSON mode",
-      raw: first.json,
-    };
-  }
-
-  return { ok: true, content, raw: first.json };
+  return { ok: true, content: first.json.choices?.[0]?.message?.content, raw: first.json };
 }
 
 // ---------------------------------------------------------
-// POST /api/generate  – Groq for TEXT, HF only for LOGOS
+// POST HANDLER
 // ---------------------------------------------------------
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { idea, audience, tone, brandName, industry } = body;
+    const { idea, audience, tone, brandName, industry, userId } = body;
 
-    if (!idea) {
-      return NextResponse.json(
-        { error: "Idea is required" },
-        { status: 400 }
-      );
+    if (!idea) return NextResponse.json({ error: "Idea is required" }, { status: 400 });
+
+    if (userId) {
+      const userRef = doc(db, "users", userId);
+      const userSnap = await getDoc(userRef);
+      if (userSnap.exists() && (userSnap.data().credits || 0) < 1) {
+        return NextResponse.json({ error: "Insufficient credits" }, { status: 403 });
+      }
     }
 
-    const finalPrompt = MASTER_PROMPT.replaceAll(
-      "<<BRAND_NAME>>",
-      brandName || ""
-    )
-      .replaceAll("<<IDEA>>", idea)
-      .replaceAll("<<TARGET_AUDIENCE>>", audience || "")
-      .replaceAll("<<TONE>>", tone || "")
-      .replaceAll("<<INDUSTRY>>", industry || "");
+    const finalPrompt = MASTER_PROMPT.replaceAll("<<BRAND_NAME>>", brandName || "")
+      .replaceAll("<<IDEA>>", idea).replaceAll("<<TARGET_AUDIENCE>>", audience || "")
+      .replaceAll("<<TONE>>", tone || "").replaceAll("<<INDUSTRY>>", industry || "");
 
-    // 1) Groq for brand JSON  ✅ (with fallback)
     const groqResult = await callGroqWithFallback(finalPrompt);
+    if (!groqResult.ok) return NextResponse.json({ error: "Groq error" }, { status: 500 });
 
-    if (!groqResult.ok) {
-      return NextResponse.json(
-        {
-          error: groqResult.errorMessage,
-          details: groqResult.raw,
-        },
-        { status: 500 }
-      );
-    }
+    let parsed = safeParseJSON(groqResult.content.trim());
+    const logoPrompt = parsed.logos?.promptUsed || `Minimal logo for ${brandName}`;
 
-    let parsed: any;
-    try {
-      // content is always a string here
-      parsed = safeParseJSON(groqResult.content.trim());
-    } catch (e) {
-      console.error(
-        "JSON parse failed even after cleanup:",
-        e,
-        "\nRAW (truncated):",
-        groqResult.content.slice(0, 500)
-      );
-      return NextResponse.json(
-        {
-          error:
-            "Model returned invalid JSON even after cleanup. Try again with simpler inputs.",
-        },
-        { status: 500 }
-      );
-    }
-
-    // 2) Normalize shape for frontend
-    if (parsed?.branding?.visualIdentity) {
-      const vi = parsed.branding.visualIdentity;
-
-      if (vi.colorPalette && !parsed.branding.colorPalette) {
-        parsed.branding.colorPalette = vi.colorPalette;
-      }
-      if (vi.fontSuggestions && !parsed.branding.fontSuggestions) {
-        parsed.branding.fontSuggestions = vi.fontSuggestions;
-      }
-    }
-
-    // 3) Build logo prompt
-    const logoPrompt =
-      parsed.logos?.promptUsed ||
-      `Minimal modern vector logo for ${
-        brandName || parsed.branding?.nameOptions?.[0] || "the brand"
-      } on a clean white background, simple, flat, scalable, no text.`;
-
-    // 4) Hugging Face for initial logos (image only)
-    let imageUrls: string[] = [
-      "https://dummyimage.com/512x512/111/aaa.png&text=Logo+1",
-      "https://dummyimage.com/512x512/111/aaa.png&text=Logo+2",
-    ];
-    let usedFallback = false;
-    let hfError: string | undefined;
-
-    try {
-      const { images, error } = await generateHFLogos(logoPrompt, 2);
-      if (images.length) {
-        imageUrls = images;
-      } else {
-        usedFallback = true;
-        hfError = error;
-      }
-    } catch (e: any) {
-      usedFallback = true;
-      hfError = e?.message || String(e);
-      console.error("HF image call from /api/generate failed:", e);
-    }
+    // --- LOGO GENERATION ---
+    const generatedImages = await generateHFLogos(logoPrompt, 2);
 
     parsed.logos = {
       promptUsed: logoPrompt,
-      imageUrls,
-      usedFallback,
-      hfError: hfError || null,
+      imageUrls: generatedImages.images.length ? generatedImages.images : ["https://dummyimage.com/512x512/aaa/000&text=Fallback"],
+      usedFallback: !generatedImages.images.length,
+      hfError: generatedImages.error || null,
       hfModelId: HF_IMAGE_MODEL,
     };
 
+    // --- 2. FIRESTORE PERMANENT SAVE & CREDIT DEDUCTION ---
+    if (userId) {
+      await addDoc(collection(db, "brands"), {
+        userId,
+        brandName: brandName || parsed.branding?.nameOptions?.[0] || "Untitled Brand",
+        strategy: parsed,
+        logoData: generatedImages.images.length ? generatedImages.images[0] : null,
+        createdAt: serverTimestamp(),
+      });
+      await updateDoc(doc(db, "users", userId), { credits: increment(-1) });
+    }
+
     return NextResponse.json(parsed, { status: 200 });
   } catch (error: any) {
-    console.error("SERVER ERROR /api/generate (HF+Groq):", error);
-    return NextResponse.json(
-      { error: error.message || "Unexpected server error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
