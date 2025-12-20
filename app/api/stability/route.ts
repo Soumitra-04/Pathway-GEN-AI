@@ -49,71 +49,86 @@ Generate a premium, elegant, ultra-clean brand logo symbol that looks like it be
 `.trim();
 
 /* -----------------------------
+   HF MODEL CONFIG (FIXED)
+----------------------------- */
+
+// Primary (paid / future-ready)
+const HF_PRIMARY_MODEL =
+  process.env.HF_LOGO_MODEL_ID || "black-forest-labs/FLUX.1-dev";
+
+// ✅ Router-compatible free fallback
+const HF_FALLBACK_MODEL = "runwayml/stable-diffusion-v1-5";
+
+/* -----------------------------
    Helper: call Hugging Face & return data URLs
 ----------------------------- */
 
 async function generateHuggingFaceLogos(
   prompt: string,
   numImages: number
-): Promise<string[]> {
+): Promise<{
+  images: string[];
+  modelUsed: string;
+  error?: string;
+}> {
   const apiKey = process.env.HUGGINGFACE_API_KEY;
-  const modelId =
-    process.env.HF_LOGO_MODEL_ID || "black-forest-labs/FLUX.1-dev";
-
   if (!apiKey) {
-    console.warn("HUGGINGFACE_API_KEY not set, cannot generate logos.");
-    return [];
+    console.warn("HUGGINGFACE_API_KEY not set.");
+    return { images: [], modelUsed: "none", error: "Missing API key" };
   }
 
-  // 🔴 OLD (no longer supported):
-  // const endpoint = `https://api-inference.huggingface.co/models/${modelId}`;
+  async function callModel(modelId: string) {
+    const endpoint = `https://router.huggingface.co/hf-inference/models/${modelId}`;
+    const results: string[] = [];
 
-  // ✅ NEW: use router.huggingface.co
-  const endpoint = `https://router.huggingface.co/hf-inference/models/${modelId}`;
-
-  const results: string[] = [];
-
-  for (let i = 0; i < numImages; i++) {
-    const res = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        Accept: "image/png",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        inputs: prompt,
-        // optional tuning params – safe defaults
-        parameters: {
-          guidance_scale: 7,
-          num_inference_steps: 28,
+    for (let i = 0; i < numImages; i++) {
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          Accept: "image/png",
+          "Content-Type": "application/json",
         },
-      }),
-    });
+        body: JSON.stringify({
+          inputs: prompt,
+          parameters: {
+            guidance_scale: 7,
+            num_inference_steps: 28,
+          },
+        }),
+      });
 
-    if (!res.ok) {
-      const errText = await res.text().catch(() => "");
-      console.error(
-        "Hugging Face logo API error (/api/stability):",
-        res.status,
-        errText.slice(0, 200)
-      );
-
-      // If model is loading or rate-limited, don't keep hammering
-      if (res.status === 503 || res.status === 429 || res.status === 410) {
-        break;
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(`HF ${res.status}: ${text}`);
       }
 
-      continue;
+      const buffer = await res.arrayBuffer();
+      results.push(
+        `data:image/png;base64,${Buffer.from(buffer).toString("base64")}`
+      );
     }
 
-    const buffer = await res.arrayBuffer();
-    const base64 = Buffer.from(buffer).toString("base64");
-    const dataUrl = `data:image/png;base64,${base64}`;
-    results.push(dataUrl);
+    return results;
   }
 
-  return results;
+  // 1️⃣ Try primary model
+  try {
+    const images = await callModel(HF_PRIMARY_MODEL);
+    return { images, modelUsed: HF_PRIMARY_MODEL };
+  } catch (e: any) {
+    try {
+      // 2️⃣ Always fallback to router-safe model
+      const images = await callModel(HF_FALLBACK_MODEL);
+      return { images, modelUsed: HF_FALLBACK_MODEL };
+    } catch (fallbackErr: any) {
+      return {
+        images: [],
+        modelUsed: HF_FALLBACK_MODEL,
+        error: fallbackErr.message,
+      };
+    }
+  }
 }
 
 /* -----------------------------
@@ -141,7 +156,7 @@ export async function POST(request: Request) {
       numImages,
     } = body;
 
-    // 1) Build final prompt (either raw prompt or templated prompt)
+    // 1) Build final prompt
     let finalPrompt: string;
 
     if (prompt && prompt.trim()) {
@@ -169,11 +184,18 @@ export async function POST(request: Request) {
       );
     }
 
-    const urls = await generateHuggingFaceLogos(finalPrompt, imagesRequested);
+    const result = await generateHuggingFaceLogos(
+      finalPrompt,
+      imagesRequested
+    );
 
-    if (!urls.length) {
+    if (!result.images.length) {
       return NextResponse.json(
-        { error: "Hugging Face response did not contain any image data" },
+        {
+          error: "Hugging Face did not return images",
+          hfError: result.error || null,
+          hfModelId: result.modelUsed,
+        },
         { status: 500 }
       );
     }
@@ -181,7 +203,8 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         promptUsed: finalPrompt,
-        imageUrls: urls,
+        imageUrls: result.images,
+        hfModelId: result.modelUsed,
       },
       { status: 200 }
     );
