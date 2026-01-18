@@ -12,13 +12,18 @@ import {
 } from "firebase/firestore";
 
 /* ---------------------------------------------------------
-   MASTER PROMPT (unchanged)
+   MASTER PROMPT (FIXED PLACEHOLDERS)
 --------------------------------------------------------- */
 const MASTER_PROMPT = `
-You are a world-class Brand Strategist + Business Consultant AI with 15+ years of expertise in consumer psychology, brand positioning, and startup advisory.
+You are a world-class Brand Strategist AI. Create a strategy for:
+Brand: <<BRAND_NAME>>
+Idea: <<IDEA>>
+Audience: <<TARGET_AUDIENCE>>
+Tone: <<TONE>>
+Industry: <<INDUSTRY>>
+
 Your ONLY job is to return a valid JSON object in the exact structure below.
 No explanations, no markdown, no intro text, no backticks — only JSON.
-Every section must contain complete and premium business-logic-backed content.
 
 JSON to return:
 {
@@ -143,7 +148,7 @@ JSON to return:
 --------------------------------------------------- */
 function removeTrailingCommas(obj: any): any {
   if (Array.isArray(obj)) {
-    return obj.filter((el) => el !== undefined).map(removeTrailingCommas);
+    return obj.filter((el: any) => el !== undefined).map(removeTrailingCommas);
   } else if (obj !== null && typeof obj === "object") {
     const cleaned: any = {};
     for (const key in obj) {
@@ -174,14 +179,9 @@ function safeParseJSON(raw: string): any {
 }
 
 /* ---------------------------------------------------
-   Hugging Face Image Generator (FINAL FIX)
+   Hugging Face Image Generator
 --------------------------------------------------- */
-
-// Primary (paid / future-ready)
-const HF_PRIMARY_MODEL =
-  process.env.HF_LOGO_MODEL_ID || "black-forest-labs/FLUX.1-dev";
-
-// ✅ Router-compatible free fallback
+const HF_PRIMARY_MODEL = process.env.HF_LOGO_MODEL_ID || "black-forest-labs/FLUX.1-dev";
 const HF_FALLBACK_MODEL = "runwayml/stable-diffusion-v1-5";
 
 async function generateHFLogos(
@@ -195,7 +195,6 @@ async function generateHFLogos(
   async function callModel(modelId: string) {
     const endpoint = `https://router.huggingface.co/hf-inference/models/${modelId}`;
     const images: string[] = [];
-
     for (let i = 0; i < numImages; i++) {
       const resp = await fetch(endpoint, {
         method: "POST",
@@ -206,16 +205,12 @@ async function generateHFLogos(
         },
         body: JSON.stringify({ inputs: prompt }),
       });
-
       if (!resp.ok) {
         const text = await resp.text();
         throw new Error(`HF ${resp.status}: ${text}`);
       }
-
       const buffer = await resp.arrayBuffer();
-      images.push(
-        `data:image/png;base64,${Buffer.from(buffer).toString("base64")}`
-      );
+      images.push(`data:image/png;base64,${Buffer.from(buffer).toString("base64")}`);
     }
     return images;
   }
@@ -228,21 +223,16 @@ async function generateHFLogos(
       const images = await callModel(HF_FALLBACK_MODEL);
       return { images, modelUsed: HF_FALLBACK_MODEL };
     } catch (err: any) {
-      return {
-        images: [],
-        error: err.message,
-        modelUsed: HF_FALLBACK_MODEL,
-      };
+      return { images: [], error: err.message, modelUsed: HF_FALLBACK_MODEL };
     }
   }
 }
 
 /* ---------------------------------------------------
-   Groq helper (unchanged)
+   Groq helper
 --------------------------------------------------- */
 async function callGroqWithFallback(prompt: string) {
   const endpoint = "https://api.groq.com/openai/v1/chat/completions";
-
   async function call(useJson: boolean) {
     const body: any = {
       model: "llama-3.1-8b-instant",
@@ -251,7 +241,6 @@ async function callGroqWithFallback(prompt: string) {
       max_tokens: 3500,
     };
     if (useJson) body.response_format = { type: "json_object" };
-
     const resp = await fetch(endpoint, {
       method: "POST",
       headers: {
@@ -260,17 +249,12 @@ async function callGroqWithFallback(prompt: string) {
       },
       body: JSON.stringify(body),
     });
-
     return { resp, json: await resp.json() };
   }
-
   const first = await call(true);
   if (!first.resp.ok || first.json?.error) {
     const second = await call(false);
-    return {
-      ok: second.resp.ok,
-      content: second.json.choices?.[0]?.message?.content,
-    };
+    return { ok: second.resp.ok, content: second.json.choices?.[0]?.message?.content };
   }
   return { ok: true, content: first.json.choices?.[0]?.message?.content };
 }
@@ -283,9 +267,7 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { idea, audience, tone, brandName, industry, userId } = body;
 
-    if (!idea) {
-      return NextResponse.json({ error: "Idea is required" }, { status: 400 });
-    }
+    if (!idea) return NextResponse.json({ error: "Idea is required" }, { status: 400 });
 
     if (userId) {
       const snap = await getDoc(doc(db, "users", userId));
@@ -302,22 +284,15 @@ export async function POST(request: Request) {
       .replaceAll("<<INDUSTRY>>", industry || "");
 
     const groq = await callGroqWithFallback(finalPrompt);
-    if (!groq.ok) {
-      return NextResponse.json({ error: "Groq error" }, { status: 500 });
-    }
+    if (!groq.ok) return NextResponse.json({ error: "Groq error" }, { status: 500 });
 
     let parsed = safeParseJSON(groq.content.trim());
-
-    const logoPrompt =
-      parsed.logos?.promptUsed || `Minimal vector logo for ${brandName}`;
-
+    const logoPrompt = parsed.logos?.promptUsed || `Minimal vector logo for ${brandName}`;
     const logos = await generateHFLogos(logoPrompt, 2);
 
     parsed.logos = {
       promptUsed: logoPrompt,
-      imageUrls: logos.images.length
-        ? logos.images
-        : ["https://dummyimage.com/512x512/aaa/000&text=Fallback"],
+      imageUrls: logos.images.length ? logos.images : ["https://dummyimage.com/512x512/aaa/000&text=Fallback"],
       usedFallback: !logos.images.length,
       hfError: logos.error || null,
       hfModelId: logos.modelUsed,
@@ -331,9 +306,7 @@ export async function POST(request: Request) {
         logoData: logos.images[0] || null,
         createdAt: serverTimestamp(),
       });
-      await updateDoc(doc(db, "users", userId), {
-        credits: increment(-1),
-      });
+      await updateDoc(doc(db, "users", userId), { credits: increment(-1) });
     }
 
     return NextResponse.json(parsed);
