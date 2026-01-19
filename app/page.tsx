@@ -1235,21 +1235,6 @@ export default function HomePage() {
                   "Generate Brand + Logos"
                 )}
               </button>
-
-              <button
-                onClick={handleRegenerateLogo}
-                disabled={logoLoading || (!brandName && !result)}
-                className="flex-1 px-6 py-4 rounded-lg font-semibold text-white bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all transform hover:scale-105 hover:shadow-lg hover:shadow-blue-500/50 active:scale-95"
-              >
-                {logoLoading ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-                    Regenerating...
-                  </span>
-                ) : (
-                  "Regenerate Logos Only"
-                )}
-              </button>
             </div>
           </div>
         )}
