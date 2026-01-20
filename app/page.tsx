@@ -1104,7 +1104,7 @@ export default function HomePage() {
           </button>
 
           <h1 className="text-5xl md:text-6xl font-bold mb-3 bg-clip-text text-transparent bg-gradient-to-r from-pink-500 via-purple-400 to-blue-500 drop-shadow-[0_0_20px_rgba(168,85,247,0.65)]">
-            Pathway GEN AI – Brand Generator
+            Origyn – Brand Generator
           </h1>
           <p className="text-lg md:text-xl text-purple-200 font-light tracking-wide">
             Design brands with AI in 30 seconds
@@ -1160,7 +1160,7 @@ export default function HomePage() {
                   Enter your brand idea
                 </h2>
                 <p className="text-sm text-purple-200/80 mt-1">
-                  Pathway GEN AI will generate strategy, marketing, content and
+                  Origyn will generate strategy, marketing, content and
                   logos in one shot.
                 </p>
               </div>
