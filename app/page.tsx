@@ -1195,7 +1195,7 @@ useEffect(() => {
                   Enter your brand idea
                 </h2>
                 <p className="text-sm text-purple-200/80 mt-1">
-                  Pathway GEN AI will generate strategy, marketing, content and
+                  Origyn will generate strategy, marketing, content and
                   logos in one shot.
                 </p>
               </div>
