@@ -7,7 +7,8 @@ import html2canvas from "html2canvas";
 // --- FIREBASE & NAVIGATION IMPORTS ---
 import { auth } from "@/lib/firebase"; 
 import { signOut, onAuthStateChanged } from "firebase/auth";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+
 
 type ResultType = any;
 
@@ -52,6 +53,16 @@ export default function HomePage() {
 
   // "Multi-page" flow: input page vs results page with tabs
   const [view, setView] = useState<"input" | "results">("input");
+  const searchParams = useSearchParams();
+
+useEffect(() => {
+  const viewParam = searchParams.get("view");
+  if (viewParam === "results" && result) {
+    setView("results");
+    setActiveTab("overview");
+  }
+}, [searchParams]);
+
   const [activeTab, setActiveTab] = useState<
     "overview" | "marketing" | "content" | "logos"
   >("overview");
@@ -73,6 +84,7 @@ export default function HomePage() {
         if (data.result) {
           setResult(data.result);
           setHasGenerated(true);
+          
         }
       } catch (e) {
         console.error("Failed to load from localStorage:", e);
@@ -100,9 +112,13 @@ export default function HomePage() {
                 ? {
                     landingPage: result.marketing.landingPage ?? null,
                     campaignIdeas: result.marketing.campaignIdeas ?? null,
+                    contentPlan15Days: result.marketing.contentPlan15Days ?? null,
+                    socialPosts: result.marketing.socialPosts ?? null,
                   }
                 : null,
             },
+            futureInsights: result.futureInsights ?? null, 
+            logos: result.logos ?? null,
           }
         : null;
 
@@ -164,6 +180,7 @@ export default function HomePage() {
           audience,
           tone,
           industry,
+  
         }),
       });
 
@@ -177,12 +194,14 @@ export default function HomePage() {
 
       if (!res.ok) {
         setError(data.error || `Request failed with status ${res.status}`);
+        
       } else {
         setResult(data);
         setView("results");
         setActiveTab("overview");
         setHasGenerated(true); // ensure "View last result" becomes available
       }
+
     } catch (err: any) {
       setError(err.message || "Network error occurred");
     } finally {
@@ -486,7 +505,11 @@ export default function HomePage() {
       null;
 
     const colorPalette =
-      branding?.colorPalette || strategy?.colorPalette || null;
+      branding?.colorPalette || 
+      branding?.visualIdentity?.colorPalette || 
+      strategy?.colorPalette || 
+      strategy?.visualIdentity?.colorPalette ||
+      null;
 
     const typography =
       branding?.fontSuggestions || strategy?.typography || null;
@@ -548,34 +571,44 @@ export default function HomePage() {
         </div>
 
         {/* Visual identity */}
+        {/* --- ROBUST COLOR PALETTE RENDERER --- */}
         {colorPalette && Array.isArray(colorPalette) && colorPalette.length > 0 && (
           <div className="space-y-3">
             <div className="text-xs text-purple-300/80 uppercase tracking-wide font-medium">
               Color Palette
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
               {colorPalette.map((color: any, idx: number) => {
-                const hex = color?.hex || color?.color || color;
-                const name = color?.name || `Color ${idx + 1}`;
-                const usage = color?.usage;
-                const hexValue = typeof hex === "string" ? hex : "#000000";
+                // Handle different AI data formats (Object vs String)
+                let hex = color?.hex || color?.color || color?.code || color;
+                let name = color?.name || color?.label || `Color ${idx + 1}`;
+                let usage = color?.usage || color?.description;
+
+                // Ensure Hex is a string and has '#' prefix
+                if (typeof hex !== "string") hex = "#000000";
+                if (!hex.startsWith("#") && /^[0-9A-Fa-f]{6}$/.test(hex)) {
+                  hex = "#" + hex;
+                }
+
                 return (
                   <div
                     key={idx}
-                    className="rounded-lg p-3 bg-slate-950/80 border border-purple-500/30"
+                    className="group relative rounded-lg p-3 bg-slate-950/80 border border-purple-500/30 hover:border-purple-400 transition-all"
                   >
                     <div
-                      className="w-full h-16 rounded-md mb-2 border border-slate-700"
-                      style={{ backgroundColor: hexValue }}
+                      className="w-full h-12 rounded-md mb-2 border border-white/10 shadow-inner"
+                      style={{ backgroundColor: hex }}
                     />
-                    <div className="text-xs text-slate-100 font-medium truncate">
+                    <div className="text-xs font-bold text-slate-100 truncate">
                       {name}
                     </div>
-                    <div className="text-xs text-purple-200/80 font-mono truncate">
-                      {hexValue}
+                    <div className="text-[10px] font-mono text-purple-300/70 truncate uppercase">
+                      {hex}
                     </div>
+                    
+                    {/* Tooltip for Usage */}
                     {usage && (
-                      <div className="text-xs text-purple-300/70 mt-1 line-clamp-2">
+                      <div className="absolute left-0 bottom-full mb-2 w-full opacity-0 group-hover:opacity-100 transition-opacity bg-black/90 text-white text-[10px] p-2 rounded pointer-events-none z-10 border border-purple-500/30">
                         {usage}
                       </div>
                     )}
@@ -723,7 +756,7 @@ export default function HomePage() {
             </div>
           </div>
         )}
-
+        
         {businessModelCanvas && (
           <div className="space-y-3">
             <div className="text-xs text-purple-300/80 uppercase tracking-wide font-medium">
@@ -1093,8 +1126,17 @@ export default function HomePage() {
     <main className="min-h-screen pb-16 bg-gradient-to-br from-slate-950 via-slate-950 to-slate-900 text-slate-50">
       {/* Header Section */}
       <div className="pt-12 pb-8 px-4 animate-fade-up">
-        <div className="max-w-5xl mx-auto text-center relative">
+        <div className="max-w-5xl mx-auto text-center relative flex justify-center items-center">
           
+          <div className="text-center">
+            <h1 className="text-5xl md:text-6xl font-bold mb-3 bg-clip-text text-transparent bg-gradient-to-r from-pink-500 via-purple-400 to-blue-500 drop-shadow-[0_0_20px_rgba(168,85,247,0.65)]">
+                Origyn – Brand Generator
+            </h1>
+            <p className="text-lg md:text-xl text-purple-200 font-light tracking-wide">
+                Design brands with AI in 30 seconds
+            </p>
+          </div>
+
           {/* --- LOGOUT BUTTON --- */}
           <button 
             onClick={handleLogout}
@@ -1102,13 +1144,6 @@ export default function HomePage() {
           >
             Logout
           </button>
-
-          <h1 className="text-5xl md:text-6xl font-bold mb-3 bg-clip-text text-transparent bg-gradient-to-r from-pink-500 via-purple-400 to-blue-500 drop-shadow-[0_0_20px_rgba(168,85,247,0.65)]">
-            Pathway GEN AI – Brand Generator
-          </h1>
-          <p className="text-lg md:text-xl text-purple-200 font-light tracking-wide">
-            Design brands with AI in 30 seconds
-          </p>
         </div>
       </div>
 
@@ -1245,6 +1280,7 @@ export default function HomePage() {
             <div className="flex items-center justify-between gap-3">
               <button
                 onClick={() => setView("input")}
+                
                 className="inline-flex items-center gap-2 text-sm text-purple-200 hover:text-purple-100 px-3 py-1 rounded-full bg-slate-900/80 border border-purple-500/40"
               >
                 ← Back to Inputs
@@ -1263,14 +1299,19 @@ export default function HomePage() {
                   { id: "marketing", label: "Marketing" },
                   { id: "content", label: "Content Plan" },
                   { id: "logos", label: "Logos" },
+                  { id: "Brand Future Insights", label: "Brand Future Insights" }, // DISTINCT ID
                 ].map((tab) => (
                   <button
                     key={tab.id}
-                    onClick={() =>
-                      setActiveTab(
-                        tab.id as "overview" | "marketing" | "content" | "logos"
-                      )
-                    }
+                    onClick={() => {
+                        if (tab.id === "Brand Future Insights") {
+                            router.push("/future"); // REDIRECT HERE
+                        } else {
+                            setActiveTab(
+                                tab.id as "overview" | "marketing" | "content" | "logos"
+                            );
+                        }
+                    }}
                     className={`px-4 py-2 rounded-full text-sm font-medium border transition-all ${
                       activeTab === tab.id
                         ? "bg-gradient-to-r from-pink-600 via-purple-600 to-blue-600 text-white border-transparent shadow-lg shadow-purple-900/50"
@@ -1288,14 +1329,10 @@ export default function HomePage() {
                 {activeTab === "marketing" && renderMarketingTab()}
                 {activeTab === "content" && renderContentPlanTab()}
                 {activeTab === "logos" && renderLogosTab()}
+                {/* No content render for Future Insights since it redirects */}
               </div>
             </div>
-                <Link
-                href="/future"
-                className="inline-flex items-center gap-2 text-sm text-purple-200 hover:text-purple-100 px-3 py-1 rounded-full bg-slate-900/80 border border-purple-500/40"
-              >
-                🔮 View Brand Future Insights
-            </Link>
+            
             {/* JSON Debug Viewer - optional dev mode */}
             <div className="rounded-xl p-4 bg-slate-950/80 border border-purple-500/30">
               <button

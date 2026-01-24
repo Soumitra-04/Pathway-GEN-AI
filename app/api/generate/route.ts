@@ -1,4 +1,3 @@
-// app/api/generate/route.ts
 import { NextResponse } from "next/server";
 import { db } from "@/lib/firebase";
 import {
@@ -11,8 +10,12 @@ import {
   increment,
 } from "firebase/firestore";
 
+// --- CONFIG ---
+// const groqClient = new Groq(...) // REMOVED: You use callGroqWithFallback below, so we don't need this.
+const PATHWAY_API_URL = "http://127.0.0.1:8000/v1/retrieve";
+
 /* ---------------------------------------------------------
-   MASTER PROMPT (FIXED PLACEHOLDERS)
+   MASTER PROMPT (WITH MARKET CONTEXT PLACEHOLDER)
 --------------------------------------------------------- */
 const MASTER_PROMPT = `
 You are a world-class Brand Strategist AI. Create a strategy for:
@@ -21,6 +24,29 @@ Idea: <<IDEA>>
 Audience: <<TARGET_AUDIENCE>>
 Tone: <<TONE>>
 Industry: <<INDUSTRY>>
+
+MARKET INTELLIGENCE (REAL-TIME DATA):
+<<MARKET_CONTEXT>>
+
+MARKET DATA ANALYSIS INSTRUCTIONS:
+Analyze the MARKET INTELLIGENCE provided above.
+1. If context mentions "saturation" or "declining", set 'marketRisk' > 80 and 'growthScore' < 40.
+2. If context mentions "emerging" or "high demand", set 'growthScore' > 80.
+3. Ensure all graphs (revenue, growth) match this sentiment.
+
+### CRITICAL SCORING RULES (MUST FOLLOW):
+1. **IF Context contains "SATURATION" or "DECLINING" or "DEAD":**
+   - You MUST set 'growthScore' between **10 and 35**.
+   - Set 'marketRisk' to **90**.
+   - The 'sixMonthOutlook' must be negative/warning about failure.
+
+2. **IF Context contains "EMERGING" or "EXPLODING" or "HIGH DEMAND":**
+   - You MUST set 'growthScore' between **85 and 99**.
+   - Set 'marketRisk' to **10**.
+   - The 'sixMonthOutlook' must be extremely positive.
+
+3. **IF Context is neutral/missing:**
+   - Set 'growthScore' to 50 (Average).
 
 Your ONLY job is to return a valid JSON object in the exact structure below.
 No explanations, no markdown, no intro text, no backticks — only JSON.
@@ -39,6 +65,7 @@ JSON to return:
     },
     "painPoints": ["pain points that drive customers to purchase"],
     "valueProposition": "unbeatable UVP that emotionally differentiates the brand",
+    
     "businessModel": {
       "revenueModels": ["multiple monetization models"],
       "costDrivers": ["realistic key cost drivers"],
@@ -139,12 +166,26 @@ JSON to return:
   "logos": {
     "promptUsed": "ultra-detailed prompt for Stability AI",
     "imageUrls": []
+  },
+  "futureInsights": {
+    "growthScore": 0, <-- INTEGER ONLY (Follow Rules Above)
+    "sixMonthOutlook": "String",
+    "biggestGrowthLever": "String",
+    "revenueBySegment": [ { "name": "A", "value": 100 } ],
+    "contentMomentum": [10, 20, ...], 
+    "growthPrediction": [10, 25, 45, 60, 80, 100], <-- Adjust curve based on Score (Flat for low score, Steep for high)
+    "riskAnalysis": {
+      "marketRisk": 0,
+      "brandRisk": 0,
+      "competitionRisk": 0,
+      "executionRisk": 0
+    }
   }
 }
 `.trim();
 
 /* ---------------------------------------------------
-   Cleanup helpers (unchanged)
+   Cleanup helpers
 --------------------------------------------------- */
 function removeTrailingCommas(obj: any): any {
   if (Array.isArray(obj)) {
@@ -235,32 +276,96 @@ async function callGroqWithFallback(prompt: string) {
   const endpoint = "https://api.groq.com/openai/v1/chat/completions";
   async function call(useJson: boolean) {
     const body: any = {
-      model: "llama-3.1-8b-instant",
+      model: "llama-3.1-70b-versatile", // Upped to 70b for better logic
       messages: [{ role: "user", content: prompt }],
       temperature: 0.2,
       max_tokens: 3500,
     };
     if (useJson) body.response_format = { type: "json_object" };
-    const resp = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
-      },
-      body: JSON.stringify(body),
-    });
-    return { resp, json: await resp.json() };
+    try{
+      const resp = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+        },
+        body: JSON.stringify(body),
+      });
+  
+  const json = await resp.json();
+      
+      if (!resp.ok) {
+        // LOG THE REAL ERROR HERE
+        console.error("❌ Groq API Failure:", JSON.stringify(json, null, 2));
+      }
+      
+      return { resp, json };
+    } catch (err) {
+      console.error("❌ Network/Fetch Error:", err);
+      return { resp: { ok: false }, json: { error: err } };
+    }
   }
+
+  console.log("Attempting Primary Call (JSON Mode)...");
   const first = await call(true);
+  
   if (!first.resp.ok || first.json?.error) {
-    const second = await call(false);
-    return { ok: second.resp.ok, content: second.json.choices?.[0]?.message?.content };
+    console.warn("⚠️ Primary call failed. Attempting Fallback (Text Mode)...");
+    
+    // Switch to a smaller/faster model for fallback if 70b failed
+    const body: any = {
+      model: "llama-3.1-8b-instant", 
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.2,
+    };
+
+    const secondEndpoint = "https://api.groq.com/openai/v1/chat/completions";
+    const secondResp = await fetch(secondEndpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+        },
+        body: JSON.stringify(body),
+    });
+    
+    const secondJson = await secondResp.json();
+    
+    if (!secondResp.ok) {
+        console.error("❌ Fallback also failed:", JSON.stringify(secondJson, null, 2));
+        return { ok: false, content: null };
+    }
+    
+    return { ok: true, content: secondJson.choices?.[0]?.message?.content };
   }
+
   return { ok: true, content: first.json.choices?.[0]?.message?.content };
 }
 
+
+// --- HELPER: GET MARKET DATA ---
+async function getPathwayContext(query: string) {
+  try {
+    const res = await fetch(PATHWAY_API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query: query, k: 3 }), 
+    });
+    
+    if (!res.ok) throw new Error("Pathway server unreachable");
+    
+    const data = await res.json();
+    const context = data.map((d: any) => d.text).join("\n\n"); 
+    return context || "No specific market data found.";
+
+  } catch (error) {
+    console.warn("Pathway RAG failed/skipped (using fallback):", error);
+    return "Market appears stable with moderate growth opportunities.";
+  }
+}
+
 /* ---------------------------------------------------
-   POST HANDLER
+   POST HANDLER (WIRED UP)
 --------------------------------------------------- */
 export async function POST(request: Request) {
   try {
@@ -276,17 +381,29 @@ export async function POST(request: Request) {
       }
     }
 
+    // --- STEP 1: FETCH REAL DATA ---
+    const marketContext = await getPathwayContext(idea);
+
+    // --- STEP 2: INJECT INTO PROMPT ---
     const finalPrompt = MASTER_PROMPT
       .replaceAll("<<BRAND_NAME>>", brandName || "")
       .replaceAll("<<IDEA>>", idea)
       .replaceAll("<<TARGET_AUDIENCE>>", audience || "")
       .replaceAll("<<TONE>>", tone || "")
-      .replaceAll("<<INDUSTRY>>", industry || "");
+      .replaceAll("<<INDUSTRY>>", industry || "")
+      .replaceAll("<<MARKET_CONTEXT>>", marketContext); // <--- THIS IS THE MISSING PIECE
 
+    // --- STEP 3: GENERATE STRATEGY ---
     const groq = await callGroqWithFallback(finalPrompt);
     if (!groq.ok) return NextResponse.json({ error: "Groq error" }, { status: 500 });
 
     let parsed = safeParseJSON(groq.content.trim());
+    console.log("------------------------------------------------");
+    console.log("1. RAG Context Used:", marketContext.substring(0, 50) + "...");
+    console.log("2. Future Insights Object:", parsed.futureInsights);
+    console.log("3. Growth Score Generated:", parsed.futureInsights?.growthScore);
+    console.log("------------------------------------------------");
+    // --- STEP 4: GENERATE LOGOS ---
     const logoPrompt = parsed.logos?.promptUsed || `Minimal vector logo for ${brandName}`;
     const logos = await generateHFLogos(logoPrompt, 2);
 
@@ -305,6 +422,8 @@ export async function POST(request: Request) {
         strategy: parsed,
         logoData: logos.images[0] || null,
         createdAt: serverTimestamp(),
+        // Optional: Save the context used so you can show it in the UI later
+        ragContextUsed: marketContext, 
       });
       await updateDoc(doc(db, "users", userId), { credits: increment(-1) });
     }

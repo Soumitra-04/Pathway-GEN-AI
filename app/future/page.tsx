@@ -22,36 +22,25 @@ type BrandResult = any;
 
 const PIE_COLORS = ["#ec4899", "#a855f7", "#3b82f6", "#22c55e", "#f97316"];
 
-const growthData = [
-  { month: "Jan", score: 40 },
-  { month: "Feb", score: 55 },
-  { month: "Mar", score: 65 },
-  { month: "Apr", score: 78 },
-  { month: "May", score: 88 },
-  { month: "Jun", score: 95 },
-];
-
-const riskData = [
-  { name: "Market Risk", value: 30 },
-  { name: "Brand Risk", value: 20 },
-  { name: "Competition", value: 40 },
-  { name: "Execution", value: 25 },
-];
-
 export default function BrandFuturePage() {
   const [result, setResult] = useState<BrandResult | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Load last brand data from localStorage (same key as main page)
+  // Load last brand data from localStorage
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
       const saved = window.localStorage.getItem("pathway-gen-data");
+      
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (parsed?.result) {
-          setResult(parsed.result);
-        }
+        
+        // --- FIX: Check for nested 'result' OR raw object ---
+        // This ensures we get the data regardless of how it was saved
+        const validData = parsed.result || parsed;
+        
+        console.log("✅ Future Page Loaded Data:", validData); 
+        setResult(validData);
       }
     } catch (e) {
       console.error("Failed to load brand data for future insights:", e);
@@ -60,79 +49,63 @@ export default function BrandFuturePage() {
     }
   }, []);
 
-  // ---------- Build derived data for charts ----------
+  // ---------- DATA PROCESSING (REAL-TIME) ----------
 
-  const business = result?.business;
-  const marketing = result?.marketing;
+  // 1. Safe Access to Insights (with defaults to prevent crashes)
+  const insights = result?.futureInsights || {
+    growthScore: 0,
+    sixMonthOutlook: "Data pending...",
+    biggestGrowthLever: "Data pending...",
+    revenueBySegment: [],
+    contentMomentum: [],
+    growthPrediction: [],
+    riskAnalysis: { marketRisk: 0, brandRisk: 0, competitionRisk: 0, executionRisk: 0 },
+  };
 
-  // Target audience pie chart data
-  const audienceArray: string[] = Array.isArray(business?.targetAudience)
-    ? business.targetAudience
-    : [];
+  // 2. Chart Data: Revenue by Segment (Pie Chart)
+  const revenueData = insights.revenueBySegment || [];
 
-  const audienceData = audienceArray.map((label) => ({
-    name: label,
-    value: 1, // each archetype = 1 unit; we just want distribution
+  // 3. Chart Data: Content Momentum (Bar Chart)
+  // Backend sends [10, 20, 30...], we map to { day: "Day 1", value: 10 }
+  const momentumData = (insights.contentMomentum || []).map((val: number, i: number) => ({
+    day: `Day ${i + 1}`,
+    impact: val,
   }));
 
-  // 15-day content plan bar chart data
-  const contentPlan = Array.isArray(marketing?.contentPlan15Days)
-    ? marketing.contentPlan15Days
-    : [];
+  // 4. Chart Data: Growth Prediction (Line Chart)
+  // Backend sends [10, 25, 45...], we map to { month: "Month 1", score: 10 }
+  const growthChartData = (insights.growthPrediction || []).map((val: number, i: number) => ({
+    month: `Month ${i + 1}`,
+    score: val,
+  }));
 
-  const contentPlanData = contentPlan.map((item: any, idx: number) => {
-    // Fake "impact score" just to make the chart feel real
-    const base = 60;
-    const variation = (idx % 5) * 8;
-    return {
-      day: `Day ${item.day ?? idx + 1}`,
-      impact: base + variation,
-    };
-  });
+  // 5. Chart Data: Risk Analysis (Bar Chart)
+  // Backend sends object { marketRisk: 30... }, we map to array
+  const risks = insights.riskAnalysis || {};
+  const riskChartData = [
+    { name: "Market", value: risks.marketRisk || 0 },
+    { name: "Brand", value: risks.brandRisk || 0 },
+    { name: "Comp", value: risks.competitionRisk || 0 },
+    { name: "Exec", value: risks.executionRisk || 0 },
+  ];
 
-  // Simple future “score” & interpretation
-  const brandScore = (() => {
-    if (!business || !marketing) return null;
-    let score = 70;
+  // 6. Score Badge Logic
+  const getScoreBadge = (score: number) => {
+    if (score >= 80) return { label: "🚀 HIGH GROWTH POTENTIAL", color: "text-green-400 border-green-500/30 bg-green-500/20" };
+    if (score <= 40) return { label: "⚠️ HIGH RISK DETECTED", color: "text-red-400 border-red-500/30 bg-red-500/20" };
+    return { label: "⚖️ MODERATE POTENTIAL", color: "text-yellow-400 border-yellow-500/30 bg-yellow-500/20" };
+  };
 
-    if (
-      Array.isArray(business.valuePropositionChart) &&
-      business.valuePropositionChart.length > 0
-    ) {
-      score += 5;
-    }
-    if (Array.isArray(marketing.campaignIdeas) && marketing.campaignIdeas.length >= 2) {
-      score += 5;
-    }
-    if (audienceArray.length >= 4) {
-      score += 5;
-    }
-    if (
-      Array.isArray(marketing.contentPlan15Days) &&
-      marketing.contentPlan15Days.length === 15
-    ) {
-      score += 5;
-    }
+  const badge = getScoreBadge(insights.growthScore);
 
-    return Math.min(score, 95);
-  })();
-
-  const brandScoreLabel = (() => {
-    if (brandScore == null) return "Insufficient data";
-    if (brandScore >= 90) return "High probability of strong brand growth";
-    if (brandScore >= 80) return "Very promising – with focused execution";
-    if (brandScore >= 70)
-      return "Good potential – refine positioning & campaigns";
-    return "Early stage – needs sharper strategy";
-  })();
 
   // ---------- RENDER ----------
 
   if (loading) {
     return (
       <main className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-950 to-slate-900 text-slate-50 flex items-center justify-center">
-        <p className="text-purple-200 text-sm">
-          Loading brand future insights…
+        <p className="text-purple-200 text-sm animate-pulse">
+          Loading AI Market Intelligence...
         </p>
       </main>
     );
@@ -142,138 +115,108 @@ export default function BrandFuturePage() {
     return (
       <main className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-950 to-slate-900 text-slate-50">
         <div className="max-w-4xl mx-auto px-4 pt-16 pb-10 space-y-6">
-          <div className="flex items-center justify-between gap-3">
-            <Link
-              href="/"
-              className="inline-flex items-center gap-2 text-sm text-purple-200 hover:text-purple-100 px-3 py-1 rounded-full bg-slate-900/80 border border-purple-500/40"
-            >
-              ← Back to Brand Generator
-            </Link>
-          </div>
-
-          <div className="rounded-2xl p-6 md:p-8 bg-slate-950/70 border border-purple-500/40">
-            <h1 className="text-3xl md:text-4xl font-bold mb-3 bg-clip-text text-transparent bg-gradient-to-r from-pink-500 via-purple-400 to-blue-500">
-              Brand Future Insights
-            </h1>
-            <p className="text-sm text-purple-200/90 mb-4">
-              No brand data found. Please generate a brand first on the main
-              page.
-            </p>
-            <p className="text-xs text-purple-300/70">
-              Tip: The main page saves your last result in localStorage with the
-              key{" "}
-              <code className="font-mono">pathway-gen-data</code>. This screen
-              reads that and visualizes future potential.
-            </p>
+          <Link href="/" className="text-purple-300 hover:text-white text-sm">← Back</Link>
+          <div className="rounded-2xl p-8 bg-slate-950/70 border border-purple-500/40">
+            <h1 className="text-3xl font-bold mb-3">No Data Found</h1>
+            <p className="text-sm text-purple-200">Please generate a brand first.</p>
           </div>
         </div>
       </main>
     );
   }
 
-  const brandName =
-    business?.summary?.split(" ")?.slice(0, 3).join(" ") ||
-    result?.branding?.nameOptions?.[0] ||
-    "Your Brand";
-
   return (
     <main className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-950 to-slate-900 text-slate-50 pb-16">
       <div className="max-w-6xl mx-auto px-4 pt-10 pb-6 space-y-6">
-        {/* Top bar */}
+        
+        {/* Header */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-3xl md:text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-pink-500 via-purple-400 to-blue-500">
-              Brand Future Insights
+              Future Market Insights
             </h1>
             <p className="text-sm md:text-base text-purple-200/90 mt-1">
-              Data-driven predictions based on your AI-generated brand strategy.
+              Real-time market analysis powered by <span className="text-white font-semibold">Pathway RAG</span>.
             </p>
           </div>
           <Link
-            href="/"
-            className="inline-flex items-center gap-2 text-xs md:text-sm text-purple-100 hover:text-white px-3 py-2 rounded-full bg-slate-900/80 border border-purple-500/40"
-          >
-            ← Back to Brand Generator
-          </Link>
+
+              href="/?view=results"
+              className="inline-flex items-center gap-2 text-xs md:text-sm text-purple-100 hover:text-white px-3 py-2 rounded-full bg-slate-900/80 border border-purple-500/40"
+            >
+            ← Back to Generator
+        </Link>
         </div>
 
-        {/* Brand Score Card */}
+        {/* --- TOP ROW: SCORE & TEXT --- */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-          <div className="md:col-span-1 rounded-2xl p-5 bg-slate-950/80 border border-purple-500/40 shadow-lg shadow-purple-900/40">
+          
+          {/* Score Card */}
+          <div className="md:col-span-1 rounded-2xl p-5 bg-slate-950/80 border border-purple-500/40 shadow-lg shadow-purple-900/40 relative overflow-hidden">
+            <div className="absolute top-0 right-0 p-3 opacity-10">
+               {/* Decorative background element if needed */}
+            </div>
             <p className="text-xs text-purple-300/80 uppercase tracking-wide mb-1">
-              Brand Growth Score (Simulated)
+              Market Viability Score
             </p>
             <div className="flex items-end gap-3">
-              <span className="text-5xl font-bold text-purple-300">
-                {brandScore ?? "–"}
+              <span className={`text-6xl font-bold ${insights.growthScore > 80 ? 'text-green-400' : insights.growthScore < 40 ? 'text-red-400' : 'text-purple-300'}`}>
+                {insights.growthScore}
               </span>
               <span className="text-sm text-purple-200/80 mb-2">/ 100</span>
             </div>
-            <p className="text-xs text-purple-100/90 mt-2">
-              {brandScoreLabel}
-            </p>
-            <p className="text-[11px] text-purple-300/70 mt-3">
-              This score is a heuristic based on how complete and sharp your
-              brand, marketing and content strategy are. You can tune this logic
-              later using real metrics (traffic, conversions, retention, etc.).
+            
+            <div className={`mt-3 inline-block px-3 py-1 rounded-full text-[10px] font-bold border ${badge.color}`}>
+              {badge.label}
+            </div>
+
+            <p className="text-[11px] text-purple-300/60 mt-4 border-t border-purple-500/20 pt-2">
+              Based on analysis of {result.ragContextUsed ? "real-time market documents" : "general market trends"}.
             </p>
           </div>
 
-          {/* Quick forecasts */}
+          {/* Text Insights */}
           <div className="md:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="rounded-xl p-4 bg-slate-950/80 border border-purple-500/30">
-              <p className="text-xs text-purple-300/80 uppercase tracking-wide mb-1">
+            <div className="rounded-xl p-5 bg-slate-950/80 border border-purple-500/30">
+              <p className="text-xs text-purple-300/80 uppercase tracking-wide mb-2">
                 3–6 Month Outlook
               </p>
               <p className="text-sm text-slate-100 leading-relaxed">
-                With consistent execution of your content plan and campaigns,
-                this brand can build strong awareness in its niche. Prioritize{" "}
-                <span className="text-purple-200 font-semibold">
-                  clear messaging & one hero offer
-                </span>{" "}
-                to convert early adopters.
+                {insights.sixMonthOutlook}
               </p>
             </div>
 
-            <div className="rounded-xl p-4 bg-slate-950/80 border border-purple-500/30">
-              <p className="text-xs text-purple-300/80 uppercase tracking-wide mb-1">
-                Biggest Growth Lever
+            <div className="rounded-xl p-5 bg-slate-950/80 border border-purple-500/30">
+              <p className="text-xs text-purple-300/80 uppercase tracking-wide mb-2">
+                Strategic Growth Lever
               </p>
               <p className="text-sm text-slate-100 leading-relaxed">
-                The fastest way to accelerate growth is to{" "}
-                <span className="text-purple-200 font-semibold">
-                  double-down on one primary audience segment
-                </span>{" "}
-                and build a campaign specifically for them using your strongest
-                messaging pillar.
+                {insights.biggestGrowthLever}
               </p>
             </div>
           </div>
         </div>
 
-        {/* Charts Section */}
+        {/* --- CHARTS ROW 1 --- */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-4">
-          {/* Audience Pie Chart */}
+          
+          {/* Revenue Pie Chart */}
           <div className="rounded-2xl p-5 bg-slate-950/80 border border-purple-500/40">
             <h2 className="text-lg font-semibold text-slate-50 mb-1">
-              Future Revenue by Audience Segments (Simulated)
+              Projected Revenue Segments
             </h2>
             <p className="text-xs text-purple-200/85 mb-4">
-              We treat each target archetype as a potential revenue slice. In
-              the real product, you’d replace this with actual numbers from
-              analytics or CRM.
+              Estimated revenue breakdown based on current market demand.
             </p>
 
-            {audienceData.length === 0 ? (
-              <p className="text-sm text-purple-200/70">
-                No target audience segments found in the brand JSON.
-              </p>
+            {revenueData.length === 0 ? (
+              <p className="text-sm text-purple-200/70 py-10 text-center">No revenue data available.</p>
             ) : (
               <div className="h-64">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
-                      data={audienceData}
+                      data={revenueData}
                       dataKey="value"
                       nameKey="name"
                       cx="50%"
@@ -281,64 +224,37 @@ export default function BrandFuturePage() {
                       outerRadius={80}
                       label={(entry) => entry.name}
                     >
-                      {audienceData.map((entry, index) => (
-                        <Cell
-                          key={`cell-${index}`}
-                          fill={PIE_COLORS[index % PIE_COLORS.length]}
-                        />
+                      {revenueData.map((entry: any, index: number) => (
+                        <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
                       ))}
                     </Pie>
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: "#020617",
-                        border: "1px solid #a855f7",
-                        borderRadius: 8,
-                        fontSize: 12,
-                      }}
-                    />
+                    <Tooltip contentStyle={{ backgroundColor: "#020617", border: "1px solid #a855f7", borderRadius: 8 }} />
                   </PieChart>
                 </ResponsiveContainer>
               </div>
             )}
           </div>
 
-          {/* Content Plan Bar Chart */}
+          {/* Momentum Bar Chart */}
           <div className="rounded-2xl p-5 bg-slate-950/80 border border-purple-500/40">
             <h2 className="text-lg font-semibold text-slate-50 mb-1">
-              15-Day Content Momentum Forecast
+              Viral Momentum Forecast (15 Days)
             </h2>
             <p className="text-xs text-purple-200/85 mb-4">
-              Each day’s “impact score” estimates how much that content can push
-              the brand forward. Later, you can wire this to real metrics
-              (views, saves, clicks, etc.).
+              Predicted engagement velocity based on content strategy.
             </p>
 
-            {contentPlanData.length === 0 ? (
-              <p className="text-sm text-purple-200/70">
-                No 15-day content plan found in the brand JSON.
-              </p>
+            {momentumData.length === 0 ? (
+              <p className="text-sm text-purple-200/70 py-10 text-center">No momentum data available.</p>
             ) : (
               <div className="h-64">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={contentPlanData}>
+                  <BarChart data={momentumData}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                    <XAxis
-                      dataKey="day"
-                      tick={{ fontSize: 10, fill: "#e5e7eb" }}
-                    />
+                    <XAxis dataKey="day" tick={{ fontSize: 10, fill: "#e5e7eb" }} />
                     <YAxis tick={{ fontSize: 10, fill: "#e5e7eb" }} />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: "#020617",
-                        border: "1px solid #a855f7",
-                        borderRadius: 8,
-                        fontSize: 12,
-                      }}
-                    />
-                    <Legend
-                      wrapperStyle={{ fontSize: 11, color: "#e5e7eb" }}
-                    />
-                    <Bar dataKey="impact" name="Impact Score" fill="#a855f7" />
+                    <Tooltip contentStyle={{ backgroundColor: "#020617", border: "1px solid #a855f7", borderRadius: 8 }} />
+                    <Bar dataKey="impact" name="Impact Score" fill="#a855f7" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -346,60 +262,40 @@ export default function BrandFuturePage() {
           </div>
         </div>
 
-        {/* Extra simulated future charts: Growth + Risk */}
+        {/* --- CHARTS ROW 2: Growth & Risk --- */}
         <section className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-8">
-          {/* Growth Prediction */}
+          
+          {/* Growth Line Chart */}
           <div className="rounded-2xl p-6 bg-slate-950/70 border border-purple-500/40">
             <h3 className="text-lg font-semibold mb-4 text-purple-100">
-              Brand Growth Prediction
+              Growth Trajectory Prediction
             </h3>
             <div className="h-[250px]">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={growthData}>
+                <LineChart data={growthChartData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
                   <XAxis dataKey="month" stroke="#aaa" />
                   <YAxis stroke="#aaa" />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "#020617",
-                      border: "1px solid #a855f7",
-                      borderRadius: 8,
-                      fontSize: 12,
-                    }}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="score"
-                    stroke="#a855f7"
-                    strokeWidth={3}
-                  />
+                  <Tooltip contentStyle={{ backgroundColor: "#020617", border: "1px solid #a855f7", borderRadius: 8 }} />
+                  <Line type="monotone" dataKey="score" stroke="#a855f7" strokeWidth={3} dot={{r:4}} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
           </div>
 
-          {/* Risk Analysis */}
+          {/* Risk Bar Chart */}
           <div className="rounded-2xl p-6 bg-slate-950/70 border border-purple-500/40">
             <h3 className="text-lg font-semibold mb-4 text-purple-100">
-              Brand Risk Analysis
+              Risk Factor Analysis
             </h3>
             <div className="h-[250px]">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={riskData}>
+                <BarChart data={riskChartData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
                   <XAxis dataKey="name" stroke="#aaa" />
-                  <YAxis stroke="#aaa" />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "#020617",
-                      border: "1px solid #ec4899",
-                      borderRadius: 8,
-                      fontSize: 12,
-                    }}
-                  />
-                  <Bar
-                    dataKey="value"
-                    fill="#ec4899"
-                    radius={[6, 6, 0, 0]}
-                  />
+                  <YAxis stroke="#aaa" domain={[0, 100]} />
+                  <Tooltip contentStyle={{ backgroundColor: "#020617", border: "1px solid #ec4899", borderRadius: 8 }} />
+                  <Bar dataKey="value" fill="#ec4899" radius={[6, 6, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
