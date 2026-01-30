@@ -11,11 +11,10 @@ import {
 } from "firebase/firestore";
 
 // --- CONFIG ---
-// const groqClient = new Groq(...) // REMOVED: You use callGroqWithFallback below, so we don't need this.
 const PATHWAY_API_URL = "http://127.0.0.1:8000/v1/retrieve";
 
 /* ---------------------------------------------------------
-   MASTER PROMPT (WITH MARKET CONTEXT PLACEHOLDER)
+   MASTER PROMPT
 --------------------------------------------------------- */
 const MASTER_PROMPT = `
 You are a world-class Brand Strategist AI. Create a strategy for:
@@ -48,6 +47,34 @@ Analyze the MARKET INTELLIGENCE provided above.
 3. **IF Context is neutral/missing:**
    - Set 'growthScore' to 50 (Average).
 
+------------------------------------------------------------
+IMPLEMENTATION INTELLIGENCE MODULE (MANDATORY)
+------------------------------------------------------------
+
+You must ALSO generate a TOP-LEVEL JSON object called "implementation".
+
+PURPOSE:
+Provide AI-assisted guidance for founders to understand how to legally,
+financially, and operationally implement their business idea.
+
+IMPORTANT CONSTRAINTS:
+- This is NOT legal advice.
+- Provide indicative, industry-standard guidance only.
+- Never say "depends".
+- Use realistic assumptions based on the Industry and Idea.
+- Use cost ranges, not exact numbers.
+- If the business is regulated or restricted, clearly warn the user.
+
+DEFAULT JURISDICTION RULE:
+- If no country or state is explicitly mentioned, assume India.
+
+IMPLEMENTATION RULES:
+- Legal status MUST match jurisdiction.
+- Regulated industries MUST list permits and authorities.
+- Costs MUST align with early-stage startup benchmarks.
+- Execution roadmap MUST cover Day 0 to Month 6.
+- Feasibility scores MUST be integers between 0 and 100.
+
 Your ONLY job is to return a valid JSON object in the exact structure below.
 No explanations, no markdown, no intro text, no backticks — only JSON.
 
@@ -65,7 +92,6 @@ JSON to return:
     },
     "painPoints": ["pain points that drive customers to purchase"],
     "valueProposition": "unbeatable UVP that emotionally differentiates the brand",
-    
     "businessModel": {
       "revenueModels": ["multiple monetization models"],
       "costDrivers": ["realistic key cost drivers"],
@@ -90,7 +116,7 @@ JSON to return:
         "desiredOutcome": "",
         "solutionOffered": "",
         "competingSolutions": "",
-        "why we are better": ""
+        "whyWeAreBetter": ""
       }
     ],
     "competitorAnalysis": [
@@ -143,23 +169,7 @@ JSON to return:
       { "platform": "string", "caption": "viral copywriting", "imagePrompt": "AI image prompt" }
     ],
     "reelScripts": ["high-hook short video script lines"],
-    "contentPlan15Days": [
-      { "day": 1, "idea": "content idea" },
-      { "day": 2, "idea": "string" },
-      { "day": 3, "idea": "string" },
-      { "day": 4, "idea": "string" },
-      { "day": 5, "idea": "string" },
-      { "day": 6, "idea": "string" },
-      { "day": 7, "idea": "string" },
-      { "day": 8, "idea": "string" },
-      { "day": 9, "idea": "string" },
-      { "day": 10, "idea": "string" },
-      { "day": 11, "idea": "string" },
-      { "day": 12, "idea": "string" },
-      { "day": 13, "idea": "string" },
-      { "day": 14, "idea": "string" },
-      { "day": 15, "idea": "string" }
-    ],
+    "contentPlan15Days": [],
     "campaignIdeas": ["creative marketing campaigns designed to create buzz"],
     "goToMarketStrategy": "step-by-step approach to launch and capture early adopters"
   },
@@ -168,17 +178,56 @@ JSON to return:
     "imageUrls": []
   },
   "futureInsights": {
-    "growthScore": 0, <-- INTEGER ONLY (Follow Rules Above)
+    "growthScore": 0,
     "sixMonthOutlook": "String",
     "biggestGrowthLever": "String",
     "revenueBySegment": [ { "name": "A", "value": 100 } ],
-    "contentMomentum": [10, 20, ...], 
-    "growthPrediction": [10, 25, 45, 60, 80, 100], <-- Adjust curve based on Score (Flat for low score, Steep for high)
+    "contentMomentum": [10, 20],
+    "growthPrediction": [10, 25, 45, 60, 80, 100],
     "riskAnalysis": {
       "marketRisk": 0,
       "brandRisk": 0,
       "competitionRisk": 0,
       "executionRisk": 0
+    }
+  },
+  "implementation": {
+    "legalStatus": {
+      "isAllowed": true,
+      "jurisdiction": "Country / State",
+      "regulatoryCategory": "Unregulated / Licensed / Restricted",
+      "governingBodies": ["Authority names"],
+      "legalRisks": ["Key legal or regulatory risks"]
+    },
+    "permitsAndLicenses": [
+      {
+        "name": "License name",
+        "authority": "Issuing authority",
+        "costEstimate": "Approx range",
+        "timeRequired": "Estimated duration",
+        "mandatory": true
+      }
+    ],
+    "setupCosts": {
+      "oneTimeCosts": [
+        { "item": "Company registration", "amountRange": "₹X – ₹Y" }
+      ],
+      "monthlyOperatingCosts": [
+        { "item": "Marketing / Tech / Staff", "amountRange": "₹X – ₹Y" }
+      ],
+      "minimumInvestmentRequired": "₹X – ₹Y"
+    },
+    "executionPlan": [
+      {
+        "phase": "Phase name",
+        "duration": "Time range",
+        "actions": ["Concrete execution steps"]
+      }
+    ],
+    "feasibilityScore": {
+      "legalComplexity": 0,
+      "capitalIntensity": 0,
+      "executionDifficulty": 0
     }
   }
 }
@@ -209,13 +258,21 @@ function normalizeBadQuotes(str: string): string {
 function safeParseJSON(raw: string): any {
   try {
     return JSON.parse(raw);
-  } catch {
-    const first = raw.indexOf("{");
-    const last = raw.lastIndexOf("}");
-    let jsonString = raw.slice(first, last + 1);
-    jsonString = jsonString.replace(/,\s*(\]|\})/g, "$1");
-    jsonString = normalizeBadQuotes(jsonString);
-    return removeTrailingCommas(JSON.parse(jsonString));
+  } catch (e) {
+    try {
+      const first = raw.indexOf("{");
+      const last = raw.lastIndexOf("}");
+      if (first === -1 || last === -1) return null;
+      
+      let jsonString = raw.slice(first, last + 1);
+      // Regex to remove trailing commas before closing braces/brackets
+      jsonString = jsonString.replace(/,\s*(\]|\})/g, "$1");
+      jsonString = normalizeBadQuotes(jsonString);
+      return removeTrailingCommas(JSON.parse(jsonString));
+    } catch (err) {
+      console.error("Critical JSON Parse Error:", err);
+      return null;
+    }
   }
 }
 
@@ -230,6 +287,7 @@ async function generateHFLogos(
   numImages: number
 ): Promise<{ images: string[]; error?: string; modelUsed: string }> {
   if (!process.env.HUGGINGFACE_API_KEY) {
+    console.warn("Missing HUGGINGFACE_API_KEY");
     return { images: [], error: "Missing HF key", modelUsed: "none" };
   }
 
@@ -260,10 +318,12 @@ async function generateHFLogos(
     const images = await callModel(HF_PRIMARY_MODEL);
     return { images, modelUsed: HF_PRIMARY_MODEL };
   } catch (e: any) {
+    console.error("Primary HF Model Failed:", e.message);
     try {
       const images = await callModel(HF_FALLBACK_MODEL);
       return { images, modelUsed: HF_FALLBACK_MODEL };
     } catch (err: any) {
+      console.error("Fallback HF Model Failed:", err.message);
       return { images: [], error: err.message, modelUsed: HF_FALLBACK_MODEL };
     }
   }
@@ -273,16 +333,23 @@ async function generateHFLogos(
    Groq helper
 --------------------------------------------------- */
 async function callGroqWithFallback(prompt: string) {
+  if (!process.env.GROQ_API_KEY) {
+    console.error("Missing GROQ_API_KEY");
+    return { ok: false, error: "Server configuration error: Missing Groq API Key" };
+  }
+
   const endpoint = "https://api.groq.com/openai/v1/chat/completions";
+  
   async function call(useJson: boolean) {
     const body: any = {
-      model: "llama-3.1-70b-versatile", // Upped to 70b for better logic
+      model: "llama-3.3-70b-versatile", // UPDATED MODEL HERE
       messages: [{ role: "user", content: prompt }],
       temperature: 0.2,
-      max_tokens: 3500,
+      max_tokens: 7500,
     };
     if (useJson) body.response_format = { type: "json_object" };
-    try{
+    
+    try {
       const resp = await fetch(endpoint, {
         method: "POST",
         headers: {
@@ -291,75 +358,57 @@ async function callGroqWithFallback(prompt: string) {
         },
         body: JSON.stringify(body),
       });
-  
-  const json = await resp.json();
       
       if (!resp.ok) {
-        // LOG THE REAL ERROR HERE
-        console.error("❌ Groq API Failure:", JSON.stringify(json, null, 2));
+        const text = await resp.text();
+        console.error(`Groq API Error (${resp.status}):`, text);
+        return { resp: { ok: false }, json: { error: text } };
       }
-      
+
+      const json = await resp.json();
       return { resp, json };
     } catch (err) {
-      console.error("❌ Network/Fetch Error:", err);
+      console.error("Groq Network/Parsing Error:", err);
       return { resp: { ok: false }, json: { error: err } };
     }
   }
 
-  console.log("Attempting Primary Call (JSON Mode)...");
   const first = await call(true);
-  
   if (!first.resp.ok || first.json?.error) {
-    console.warn("⚠️ Primary call failed. Attempting Fallback (Text Mode)...");
-    
-    // Switch to a smaller/faster model for fallback if 70b failed
-    const body: any = {
-      model: "llama-3.1-8b-instant", 
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.2,
+    console.log("Retrying Groq without JSON mode...");
+    const second = await call(false);
+    return { 
+        ok: second.resp.ok, 
+        content: second.json?.choices?.[0]?.message?.content,
+        error: second.json?.error
     };
-
-    const secondEndpoint = "https://api.groq.com/openai/v1/chat/completions";
-    const secondResp = await fetch(secondEndpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
-        },
-        body: JSON.stringify(body),
-    });
-    
-    const secondJson = await secondResp.json();
-    
-    if (!secondResp.ok) {
-        console.error("❌ Fallback also failed:", JSON.stringify(secondJson, null, 2));
-        return { ok: false, content: null };
-    }
-    
-    return { ok: true, content: secondJson.choices?.[0]?.message?.content };
   }
-
-  return { ok: true, content: first.json.choices?.[0]?.message?.content };
+  return { 
+      ok: true, 
+      content: first.json?.choices?.[0]?.message?.content 
+  };
 }
 
-
-// --- HELPER: GET MARKET DATA ---
+/* ---------------------------------------------------
+   HELPER: GET MARKET DATA
+--------------------------------------------------- */
 async function getPathwayContext(query: string) {
   try {
     const res = await fetch(PATHWAY_API_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query: query, k: 3 }), 
+      body: JSON.stringify({ query: query, k: 3 }),
     });
-    
     if (!res.ok) throw new Error("Pathway server unreachable");
-    
     const data = await res.json();
-    const context = data.map((d: any) => d.text).join("\n\n"); 
-    return context || "No specific market data found.";
-
+    // Safely map data only if it is an array
+    if (Array.isArray(data)) {
+        const context = data.map((d: any) => d.text).join("\n\n");
+        return context || "No specific market data found.";
+    }
+    return "Market data format unrecognized.";
   } catch (error) {
-    console.warn("Pathway RAG failed/skipped (using fallback):", error);
+    console.warn("Pathway Context Error (using fallback):", error);
     return "Market appears stable with moderate growth opportunities.";
   }
 }
@@ -372,64 +421,77 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { idea, audience, tone, brandName, industry, userId } = body;
 
+    console.log("Generating for:", { idea, brandName });
+
     if (!idea) return NextResponse.json({ error: "Idea is required" }, { status: 400 });
 
     if (userId) {
-      const snap = await getDoc(doc(db, "users", userId));
-      if (snap.exists() && (snap.data().credits || 0) < 1) {
-        return NextResponse.json({ error: "Insufficient credits" }, { status: 403 });
+      try {
+        const snap = await getDoc(doc(db, "users", userId));
+        if (snap.exists() && (snap.data().credits || 0) < 1) {
+          return NextResponse.json({ error: "Insufficient credits" }, { status: 403 });
+        }
+      } catch (dbError) {
+        console.error("Firebase Auth Check Failed:", dbError);
+        // Continue anyway if you want to allow guests, otherwise throw
       }
     }
 
-    // --- STEP 1: FETCH REAL DATA ---
     const marketContext = await getPathwayContext(idea);
 
-    // --- STEP 2: INJECT INTO PROMPT ---
     const finalPrompt = MASTER_PROMPT
-      .replaceAll("<<BRAND_NAME>>", brandName || "")
+      .replaceAll("<<BRAND_NAME>>", brandName || "A new startup")
       .replaceAll("<<IDEA>>", idea)
-      .replaceAll("<<TARGET_AUDIENCE>>", audience || "")
-      .replaceAll("<<TONE>>", tone || "")
-      .replaceAll("<<INDUSTRY>>", industry || "")
-      .replaceAll("<<MARKET_CONTEXT>>", marketContext); // <--- THIS IS THE MISSING PIECE
+      .replaceAll("<<TARGET_AUDIENCE>>", audience || "General Public")
+      .replaceAll("<<TONE>>", tone || "Professional")
+      .replaceAll("<<INDUSTRY>>", industry || "Technology")
+      .replaceAll("<<MARKET_CONTEXT>>", marketContext);
 
-    // --- STEP 3: GENERATE STRATEGY ---
     const groq = await callGroqWithFallback(finalPrompt);
-    if (!groq.ok) return NextResponse.json({ error: "Groq error" }, { status: 500 });
+    
+    if (!groq.ok || !groq.content) {
+        return NextResponse.json({ error: "AI Generation Failed: " + (groq.error || "Unknown error") }, { status: 500 });
+    }
 
     let parsed = safeParseJSON(groq.content.trim());
-    console.log("------------------------------------------------");
-    console.log("1. RAG Context Used:", marketContext.substring(0, 50) + "...");
-    console.log("2. Future Insights Object:", parsed.futureInsights);
-    console.log("3. Growth Score Generated:", parsed.futureInsights?.growthScore);
-    console.log("------------------------------------------------");
-    // --- STEP 4: GENERATE LOGOS ---
+    
+    if (!parsed) {
+        console.error("Failed to parse JSON from Groq:", groq.content.substring(0, 200) + "...");
+        return NextResponse.json({ error: "Failed to parse AI response" }, { status: 500 });
+    }
+
     const logoPrompt = parsed.logos?.promptUsed || `Minimal vector logo for ${brandName}`;
     const logos = await generateHFLogos(logoPrompt, 2);
 
     parsed.logos = {
       promptUsed: logoPrompt,
-      imageUrls: logos.images.length ? logos.images : ["https://dummyimage.com/512x512/aaa/000&text=Fallback"],
+      imageUrls: logos.images.length ? logos.images : ["https://placehold.co/512x512?text=Logo+Generation+Failed"],
       usedFallback: !logos.images.length,
       hfError: logos.error || null,
       hfModelId: logos.modelUsed,
     };
 
+    // Save to Firebase only if userId exists
     if (userId) {
-      await addDoc(collection(db, "brands"), {
-        userId,
-        brandName: brandName || parsed.branding?.nameOptions?.[0],
-        strategy: parsed,
-        logoData: logos.images[0] || null,
-        createdAt: serverTimestamp(),
-        // Optional: Save the context used so you can show it in the UI later
-        ragContextUsed: marketContext, 
-      });
-      await updateDoc(doc(db, "users", userId), { credits: increment(-1) });
+      try {
+        await addDoc(collection(db, "brands"), {
+          userId,
+          brandName: brandName || parsed.branding?.nameOptions?.[0],
+          strategy: parsed,
+          logoData: logos.images[0] || null,
+          createdAt: serverTimestamp(),
+          ragContextUsed: marketContext,
+        });
+        await updateDoc(doc(db, "users", userId), { credits: increment(-1) });
+      } catch (e) {
+        console.error("Firebase Save Error:", e);
+        // Don't fail the request if just saving to DB fails
+      }
     }
 
     return NextResponse.json(parsed);
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    console.error("General API Error:", e);
+    return NextResponse.json({ error: e.message || "Internal Server Error" }, { status: 500 });
   }
 }

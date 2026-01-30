@@ -82,7 +82,7 @@ useEffect(() => {
 }, [searchParams]);
 
   const [activeTab, setActiveTab] = useState<
-    "overview" | "marketing" | "content" | "logos" | "future"
+    "overview" | "marketing" | "content" | "logos" | "future" | "implementation"
   >("overview");
 
   const logoSectionRef = useRef<HTMLDivElement | null>(null);
@@ -137,6 +137,7 @@ useEffect(() => {
             },
             futureInsights: result.futureInsights ?? null, 
             logos: result.logos ?? null,
+            implementation: result.implementation ?? null,
           }
         : null;
 
@@ -1346,6 +1347,214 @@ useEffect(() => {
     );
   };
 
+  const renderImplementationTab = () => {
+    const impl = result?.implementation;
+    if (!impl) {
+      return (
+        <p className="text-sm text-purple-200/70">
+          No implementation data available. Please generate a brand first.
+        </p>
+      );
+    }
+
+    const {
+      legalStatus,
+      permitsAndLicenses,
+      setupCosts,
+      executionPlan,
+      feasibilityScore,
+    } = impl;
+
+    // Helper functions specific to this tab
+    const renderArray = (arr: any[] | undefined | null, maxItems: number = 10) => {
+      if (!Array.isArray(arr) || arr.length === 0) return null;
+      const items = arr.slice(0, maxItems);
+      return (
+        <div className="flex flex-wrap gap-2 mt-2">
+          {items.map((item, idx) => (
+            <span
+              key={idx}
+              className="px-3 py-1 rounded-full bg-slate-900/70 border border-purple-500/30 text-sm text-purple-100"
+            >
+              {typeof item === "string" ? item : JSON.stringify(item)}
+            </span>
+          ))}
+        </div>
+      );
+    };
+
+    const renderField = (label: string, value: any, isArray = false) => {
+      if (value === null || value === undefined || value === "") return null;
+      if (isArray && Array.isArray(value)) {
+        return (
+          <div className="space-y-1">
+            <div className="text-xs text-purple-300/80 uppercase tracking-wide font-medium">
+              {label}
+            </div>
+            {renderArray(value)}
+          </div>
+        );
+      }
+      if (typeof value === "string" || typeof value === "number") {
+        return (
+          <div className="space-y-1">
+            <div className="text-xs text-purple-300/80 uppercase tracking-wide font-medium">
+              {label}
+            </div>
+            <div className="text-slate-100 text-sm leading-relaxed">
+              {value}
+            </div>
+          </div>
+        );
+      }
+      return null;
+    };
+
+    return (
+      <div className="space-y-8 animate-fade-up">
+        {/* 5. Feasibility Score */}
+        {feasibilityScore && (
+          <div className="space-y-3">
+             <div className="text-xs text-purple-300/80 uppercase tracking-wide font-medium">
+               Feasibility Analysis (0-100)
+             </div>
+             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {[
+                  { label: "Legal Complexity", value: feasibilityScore.legalComplexity, color: "text-blue-400", border: "border-blue-500/30" },
+                  { label: "Capital Intensity", value: feasibilityScore.capitalIntensity, color: "text-orange-400", border: "border-orange-500/30" },
+                  { label: "Execution Difficulty", value: feasibilityScore.executionDifficulty, color: "text-red-400", border: "border-red-500/30" }
+                ].map((score, i) => (
+                   <div key={i} className={`rounded-xl p-4 bg-slate-950/80 border ${score.border} flex flex-col items-center justify-center`}>
+                      <span className={`text-3xl font-bold ${score.color}`}>{score.value ?? 0}</span>
+                      <span className="text-xs text-slate-300 mt-1 uppercase tracking-wider">{score.label}</span>
+                   </div>
+                ))}
+             </div>
+          </div>
+        )}
+
+        {/* 1. Legal Status */}
+        {legalStatus && (
+          <div className="space-y-3">
+             <div className="text-xs text-purple-300/80 uppercase tracking-wide font-medium">
+               Legal Status & Governance
+             </div>
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="rounded-lg bg-slate-950/80 border border-purple-500/30 p-4 space-y-2">
+                   {renderField("Allowed in India?", legalStatus.isAllowed ? "Yes" : "No")}
+                   {renderField("Jurisdiction", legalStatus.jurisdiction)}
+                   {renderField("Regulatory Category", legalStatus.regulatoryCategory)}
+                </div>
+                <div className="rounded-lg bg-slate-950/80 border border-purple-500/30 p-4 space-y-2">
+                   {renderField("Governing Bodies", legalStatus.governingBodies, true)}
+                   {renderField("Key Legal Risks", legalStatus.legalRisks, true)}
+                </div>
+             </div>
+          </div>
+        )}
+
+        {/* 2. Permits & Licenses */}
+        {permitsAndLicenses && permitsAndLicenses.length > 0 && (
+           <div className="space-y-3">
+              <div className="text-xs text-purple-300/80 uppercase tracking-wide font-medium">
+                Required Permits & Licenses
+              </div>
+              <div className="grid grid-cols-1 gap-3">
+                 {permitsAndLicenses.map((p: any, idx: number) => (
+                    <div key={idx} className="rounded-lg bg-slate-950/80 border border-purple-500/30 p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                       <div className="space-y-1">
+                          <p className="text-slate-50 font-semibold text-sm">{p.name}</p>
+                          <p className="text-purple-200/70 text-xs">{p.authority}</p>
+                       </div>
+                       <div className="flex flex-wrap gap-3 text-xs">
+                          <div className="px-3 py-1 rounded bg-slate-900 border border-white/10 text-slate-300">
+                             Est. Cost: <span className="text-white">{p.costEstimate}</span>
+                          </div>
+                          <div className="px-3 py-1 rounded bg-slate-900 border border-white/10 text-slate-300">
+                             Time: <span className="text-white">{p.timeRequired}</span>
+                          </div>
+                           <div className={`px-3 py-1 rounded border ${p.mandatory ? 'bg-red-900/20 border-red-500/30 text-red-200' : 'bg-green-900/20 border-green-500/30 text-green-200'}`}>
+                             {p.mandatory ? "Mandatory" : "Optional"}
+                          </div>
+                       </div>
+                    </div>
+                 ))}
+              </div>
+           </div>
+        )}
+
+        {/* 3. Setup Costs */}
+        {setupCosts && (
+           <div className="space-y-3">
+              <div className="text-xs text-purple-300/80 uppercase tracking-wide font-medium">
+                Financial Requirements
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                 {/* One Time */}
+                 <div className="rounded-lg bg-slate-950/80 border border-purple-500/30 p-4">
+                    <h4 className="text-sm font-semibold text-slate-50 mb-3 border-b border-purple-500/20 pb-2">One-Time Setup Costs</h4>
+                    <div className="space-y-2">
+                       {setupCosts.oneTimeCosts?.map((c: any, i: number) => (
+                          <div key={i} className="flex justify-between text-sm">
+                             <span className="text-purple-200/80">{c.item}</span>
+                             <span className="text-slate-100 font-mono">{c.amountRange}</span>
+                          </div>
+                       ))}
+                    </div>
+                 </div>
+                 {/* Monthly */}
+                 <div className="rounded-lg bg-slate-950/80 border border-purple-500/30 p-4">
+                    <h4 className="text-sm font-semibold text-slate-50 mb-3 border-b border-purple-500/20 pb-2">Monthly Operating Costs</h4>
+                    <div className="space-y-2">
+                       {setupCosts.monthlyOperatingCosts?.map((c: any, i: number) => (
+                          <div key={i} className="flex justify-between text-sm">
+                             <span className="text-purple-200/80">{c.item}</span>
+                             <span className="text-slate-100 font-mono">{c.amountRange}</span>
+                          </div>
+                       ))}
+                    </div>
+                 </div>
+                 {/* Min Investment */}
+                 <div className="md:col-span-2 rounded-lg bg-gradient-to-r from-purple-900/20 to-blue-900/20 border border-purple-500/30 p-4 flex items-center justify-between">
+                    <span className="text-sm font-semibold text-purple-200">Minimum Investment Required</span>
+                    <span className="text-xl font-bold text-white">{setupCosts.minimumInvestment}</span>
+                 </div>
+              </div>
+           </div>
+        )}
+
+        {/* 4. Execution Plan */}
+        {executionPlan && executionPlan.length > 0 && (
+           <div className="space-y-3">
+              <div className="text-xs text-purple-300/80 uppercase tracking-wide font-medium">
+                Execution Roadmap
+              </div>
+              <div className="grid gap-4">
+                {executionPlan.map((phase: any, i: number) => (
+                  <div key={i} className="rounded-lg bg-slate-950/80 border border-purple-500/30 p-4">
+                     <div className="flex justify-between items-start mb-2">
+                        <div className="text-sm font-bold text-slate-50">
+                           <span className="text-purple-400 mr-2">Phase {i+1}:</span>
+                           {phase.phase}
+                        </div>
+                        <div className="text-xs bg-slate-900 border border-white/10 px-2 py-1 rounded text-purple-200">
+                           {phase.duration}
+                        </div>
+                     </div>
+                     <ul className="list-disc list-inside text-sm text-purple-100/90 space-y-1 ml-1">
+                        {phase.actions?.map((act: string, j: number) => (
+                           <li key={j}>{act}</li>
+                        ))}
+                     </ul>
+                  </div>
+                ))}
+              </div>
+           </div>
+        )}
+      </div>
+    );
+  };
+
   // Landing Section Component
   const LandingSection = () => {
     return (
@@ -1634,12 +1843,13 @@ useEffect(() => {
                   { id: "content", label: "Content Plan" },
                   { id: "logos", label: "Logos" },
                   { id: "future", label: "Brand Future Insights" },
+                  { id: "implementation", label: "Implementation" },
                 ].map((tab) => (
                   <button
                     key={tab.id}
                     onClick={() => {
                       setActiveTab(
-                        tab.id as "overview" | "marketing" | "content" | "logos" | "future"
+                        tab.id as "overview" | "marketing" | "content" | "logos" | "future" | "implementation"
                       );
                     }}
                     className={`px-4 py-2 rounded-full text-sm font-medium border transition-all ${
@@ -1660,6 +1870,7 @@ useEffect(() => {
                 {activeTab === "content" && renderContentPlanTab()}
                 {activeTab === "logos" && renderLogosTab()}
                 {activeTab === "future" && renderBrandFutureInsightsTab()}
+                {activeTab === "implementation" && renderImplementationTab()}
               </div>
             </div>
             
