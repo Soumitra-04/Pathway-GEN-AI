@@ -31,6 +31,7 @@ export default function HomePage() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [showDashboard, setShowDashboard] = useState(false);
 
   // --- AUTH STATE TRACKING: Track user but don't redirect ---
   useEffect(() => {
@@ -45,7 +46,8 @@ export default function HomePage() {
   const handleLogout = async () => {
     try {
       await signOut(auth); // Terminates Firebase session
-      router.push("/login");
+      setShowDashboard(false); // Return to landing page
+      // User state will be updated by onAuthStateChanged, which will show landing page
     } catch (err: any) {
       console.error("Logout failed:", err.message);
     }
@@ -1358,18 +1360,29 @@ useEffect(() => {
               Design brands with AI in 30 seconds. Get strategy, marketing, content, and logos all in one shot.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mt-8">
-              <Link
-                href="/login"
-                className="px-8 py-4 rounded-lg font-semibold text-white bg-gradient-to-r from-pink-600 via-purple-600 to-blue-600 hover:from-pink-500 hover:via-purple-500 hover:to-blue-500 transition-all transform hover:scale-105 hover:shadow-lg hover:shadow-purple-500/50 active:scale-95"
-              >
-                Login
-              </Link>
-              <Link
-                href="/signup"
-                className="px-8 py-4 rounded-lg font-semibold text-white bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 transition-all transform hover:scale-105 hover:shadow-lg hover:shadow-purple-500/50 active:scale-95"
-              >
-                Sign Up
-              </Link>
+              {user ? (
+                <button
+                  onClick={() => setShowDashboard(true)}
+                  className="px-8 py-4 rounded-lg font-semibold text-white bg-gradient-to-r from-pink-600 via-purple-600 to-blue-600 hover:from-pink-500 hover:via-purple-500 hover:to-blue-500 transition-all transform hover:scale-105 hover:shadow-lg hover:shadow-purple-500/50 active:scale-95"
+                >
+                  Go to Dashboard
+                </button>
+              ) : (
+                <>
+                  <Link
+                    href="/login"
+                    className="px-8 py-4 rounded-lg font-semibold text-white bg-gradient-to-r from-pink-600 via-purple-600 to-blue-600 hover:from-pink-500 hover:via-purple-500 hover:to-blue-500 transition-all transform hover:scale-105 hover:shadow-lg hover:shadow-purple-500/50 active:scale-95"
+                  >
+                    Login
+                  </Link>
+                  <Link
+                    href="/signup"
+                    className="px-8 py-4 rounded-lg font-semibold text-white bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 transition-all transform hover:scale-105 hover:shadow-lg hover:shadow-purple-500/50 active:scale-95"
+                  >
+                    Sign Up
+                  </Link>
+                </>
+              )}
             </div>
           </div>
         </section>
@@ -1425,7 +1438,12 @@ useEffect(() => {
     );
   }
 
-  // Show landing page if not authenticated
+  // Always show landing page first, unless user explicitly wants to see dashboard
+  if (!showDashboard) {
+    return <LandingSection />;
+  }
+
+  // Show dashboard only if user is authenticated and showDashboard is true
   if (!user) {
     return <LandingSection />;
   }
@@ -1445,13 +1463,21 @@ useEffect(() => {
             </p>
           </div>
 
-          {/* --- LOGOUT BUTTON --- */}
-          <button 
-            onClick={handleLogout}
-            className="absolute right-0 top-0 px-4 py-2 text-sm font-medium text-purple-200 bg-slate-900/50 border border-purple-500/30 rounded-full hover:bg-red-900/20 hover:text-red-200 transition-all z-10"
-          >
-            Logout
-          </button>
+          {/* --- NAVIGATION BUTTONS --- */}
+          <div className="absolute right-0 top-0 flex gap-2">
+            <button 
+              onClick={() => setShowDashboard(false)}
+              className="px-4 py-2 text-sm font-medium text-purple-200 bg-slate-900/50 border border-purple-500/30 rounded-full hover:bg-slate-800 transition-all z-10"
+            >
+              Home
+            </button>
+            <button 
+              onClick={handleLogout}
+              className="px-4 py-2 text-sm font-medium text-purple-200 bg-slate-900/50 border border-purple-500/30 rounded-full hover:bg-red-900/20 hover:text-red-200 transition-all z-10"
+            >
+              Logout
+            </button>
+          </div>
         </div>
       </div>
 
