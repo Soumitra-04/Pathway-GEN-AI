@@ -3,10 +3,25 @@ import Link from "next/link";
 import React, { useState, useRef, useEffect } from "react";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
+import {
+  PieChart,
+  Pie,
+  Cell,
+  Tooltip,
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Legend,
+  LineChart,
+  Line,
+} from "recharts";
 
 // --- FIREBASE & NAVIGATION IMPORTS ---
 import { auth } from "@/lib/firebase"; 
-import { signOut, onAuthStateChanged } from "firebase/auth";
+import { signOut, onAuthStateChanged, User } from "firebase/auth";
 import { useRouter, useSearchParams } from "next/navigation";
 
 
@@ -14,16 +29,17 @@ type ResultType = any;
 
 export default function HomePage() {
   const router = useRouter();
+  const [user, setUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
 
-  // --- AUTH PROTECTION: Redirect to login if no user ---
+  // --- AUTH STATE TRACKING: Track user but don't redirect ---
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (!user) {
-        router.push("/login"); // Securely redirects unauthorized users
-      }
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setAuthLoading(false);
     });
     return () => unsubscribe();
-  }, [router]);
+  }, []);
 
   // --- LOGOUT HANDLER ---
   const handleLogout = async () => {
@@ -64,7 +80,7 @@ useEffect(() => {
 }, [searchParams]);
 
   const [activeTab, setActiveTab] = useState<
-    "overview" | "marketing" | "content" | "logos"
+    "overview" | "marketing" | "content" | "logos" | "future"
   >("overview");
 
   const logoSectionRef = useRef<HTMLDivElement | null>(null);
@@ -1120,7 +1136,299 @@ useEffect(() => {
     );
   };
 
+  const PIE_COLORS = ["#ec4899", "#a855f7", "#3b82f6", "#22c55e", "#f97316"];
+
+  const renderBrandFutureInsightsTab = () => {
+    if (!result) {
+      return (
+        <p className="text-sm text-purple-200/70">
+          No brand data available. Please generate a brand first.
+        </p>
+      );
+    }
+
+    // Safe Access to Insights (with defaults to prevent crashes)
+    const insights = result?.futureInsights || {
+      growthScore: 0,
+      sixMonthOutlook: "Data pending...",
+      biggestGrowthLever: "Data pending...",
+      revenueBySegment: [],
+      contentMomentum: [],
+      growthPrediction: [],
+      riskAnalysis: { marketRisk: 0, brandRisk: 0, competitionRisk: 0, executionRisk: 0 },
+    };
+
+    // Chart Data: Revenue by Segment (Pie Chart)
+    const revenueData = insights.revenueBySegment || [];
+
+    // Chart Data: Content Momentum (Bar Chart)
+    const momentumData = (insights.contentMomentum || []).map((val: number, i: number) => ({
+      day: `Day ${i + 1}`,
+      impact: val,
+    }));
+
+    // Chart Data: Growth Prediction (Line Chart)
+    const growthChartData = (insights.growthPrediction || []).map((val: number, i: number) => ({
+      month: `Month ${i + 1}`,
+      score: val,
+    }));
+
+    // Chart Data: Risk Analysis (Bar Chart)
+    const risks = insights.riskAnalysis || {};
+    const riskChartData = [
+      { name: "Market", value: risks.marketRisk || 0 },
+      { name: "Brand", value: risks.brandRisk || 0 },
+      { name: "Comp", value: risks.competitionRisk || 0 },
+      { name: "Exec", value: risks.executionRisk || 0 },
+    ];
+
+    // Score Badge Logic
+    const getScoreBadge = (score: number) => {
+      if (score >= 80) return { label: "🚀 HIGH GROWTH POTENTIAL", color: "text-green-400 border-green-500/30 bg-green-500/20" };
+      if (score <= 40) return { label: "⚠️ HIGH RISK DETECTED", color: "text-red-400 border-red-500/30 bg-red-500/20" };
+      return { label: "⚖️ MODERATE POTENTIAL", color: "text-yellow-400 border-yellow-500/30 bg-yellow-500/20" };
+    };
+
+    const badge = getScoreBadge(insights.growthScore);
+
+    return (
+      <div className="space-y-6">
+        {/* Top Row: Score & Text */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          {/* Score Card */}
+          <div className="md:col-span-1 rounded-2xl p-5 bg-slate-950/80 border border-purple-500/40 shadow-lg shadow-purple-900/40 relative overflow-hidden">
+            <p className="text-xs text-purple-300/80 uppercase tracking-wide mb-1">
+              Market Viability Score
+            </p>
+            <div className="flex items-end gap-3">
+              <span className={`text-6xl font-bold ${insights.growthScore > 80 ? 'text-green-400' : insights.growthScore < 40 ? 'text-red-400' : 'text-purple-300'}`}>
+                {insights.growthScore}
+              </span>
+              <span className="text-sm text-purple-200/80 mb-2">/ 100</span>
+            </div>
+            
+            <div className={`mt-3 inline-block px-3 py-1 rounded-full text-[10px] font-bold border ${badge.color}`}>
+              {badge.label}
+            </div>
+
+            <p className="text-[11px] text-purple-300/60 mt-4 border-t border-purple-500/20 pt-2">
+              Based on analysis of {result.ragContextUsed ? "real-time market documents" : "general market trends"}.
+            </p>
+          </div>
+
+          {/* Text Insights */}
+          <div className="md:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="rounded-xl p-5 bg-slate-950/80 border border-purple-500/30">
+              <p className="text-xs text-purple-300/80 uppercase tracking-wide mb-2">
+                3–6 Month Outlook
+              </p>
+              <p className="text-sm text-slate-100 leading-relaxed">
+                {insights.sixMonthOutlook}
+              </p>
+            </div>
+
+            <div className="rounded-xl p-5 bg-slate-950/80 border border-purple-500/30">
+              <p className="text-xs text-purple-300/80 uppercase tracking-wide mb-2">
+                Strategic Growth Lever
+              </p>
+              <p className="text-sm text-slate-100 leading-relaxed">
+                {insights.biggestGrowthLever}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Charts Row 1 */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-4">
+          {/* Revenue Pie Chart */}
+          <div className="rounded-2xl p-5 bg-slate-950/80 border border-purple-500/40">
+            <h2 className="text-lg font-semibold text-slate-50 mb-1">
+              Projected Revenue Segments
+            </h2>
+            <p className="text-xs text-purple-200/85 mb-4">
+              Estimated revenue breakdown based on current market demand.
+            </p>
+
+            {revenueData.length === 0 ? (
+              <p className="text-sm text-purple-200/70 py-10 text-center">No revenue data available.</p>
+            ) : (
+              <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={revenueData}
+                      dataKey="value"
+                      nameKey="name"
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={80}
+                      label={(entry) => entry.name}
+                    >
+                      {revenueData.map((entry: any, index: number) => (
+                        <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip contentStyle={{ backgroundColor: "#020617", border: "1px solid #a855f7", borderRadius: 8 }} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </div>
+
+          {/* Momentum Bar Chart */}
+          <div className="rounded-2xl p-5 bg-slate-950/80 border border-purple-500/40">
+            <h2 className="text-lg font-semibold text-slate-50 mb-1">
+              Viral Momentum Forecast (15 Days)
+            </h2>
+            <p className="text-xs text-purple-200/85 mb-4">
+              Predicted engagement velocity based on content strategy.
+            </p>
+
+            {momentumData.length === 0 ? (
+              <p className="text-sm text-purple-200/70 py-10 text-center">No momentum data available.</p>
+            ) : (
+              <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={momentumData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                    <XAxis dataKey="day" tick={{ fontSize: 10, fill: "#e5e7eb" }} />
+                    <YAxis tick={{ fontSize: 10, fill: "#e5e7eb" }} />
+                    <Tooltip contentStyle={{ backgroundColor: "#020617", border: "1px solid #a855f7", borderRadius: 8 }} />
+                    <Bar dataKey="impact" name="Impact Score" fill="#a855f7" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Charts Row 2: Growth & Risk */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-8">
+          {/* Growth Line Chart */}
+          <div className="rounded-2xl p-6 bg-slate-950/70 border border-purple-500/40">
+            <h3 className="text-lg font-semibold mb-4 text-purple-100">
+              Growth Trajectory Prediction
+            </h3>
+            <div className="h-[250px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={growthChartData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                  <XAxis dataKey="month" stroke="#aaa" />
+                  <YAxis stroke="#aaa" />
+                  <Tooltip contentStyle={{ backgroundColor: "#020617", border: "1px solid #a855f7", borderRadius: 8 }} />
+                  <Line type="monotone" dataKey="score" stroke="#a855f7" strokeWidth={3} dot={{r:4}} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* Risk Bar Chart */}
+          <div className="rounded-2xl p-6 bg-slate-950/70 border border-purple-500/40">
+            <h3 className="text-lg font-semibold mb-4 text-purple-100">
+              Risk Factor Analysis
+            </h3>
+            <div className="h-[250px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={riskChartData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                  <XAxis dataKey="name" stroke="#aaa" />
+                  <YAxis stroke="#aaa" domain={[0, 100]} />
+                  <Tooltip contentStyle={{ backgroundColor: "#020617", border: "1px solid #ec4899", borderRadius: 8 }} />
+                  <Bar dataKey="value" fill="#ec4899" radius={[6, 6, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Landing Section Component
+  const LandingSection = () => {
+    return (
+      <main className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-950 to-slate-900 text-slate-50">
+        {/* Hero Section */}
+        <section className="pt-20 pb-16 px-4">
+          <div className="max-w-5xl mx-auto text-center space-y-8">
+            <h1 className="text-5xl md:text-7xl font-bold mb-4 bg-clip-text text-transparent bg-gradient-to-r from-pink-500 via-purple-400 to-blue-500 drop-shadow-[0_0_20px_rgba(168,85,247,0.65)]">
+              Build Your Brand in Seconds
+            </h1>
+            <p className="text-xl md:text-2xl text-purple-200 font-light tracking-wide max-w-3xl mx-auto">
+              Design brands with AI in 30 seconds. Get strategy, marketing, content, and logos all in one shot.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mt-8">
+              <Link
+                href="/login"
+                className="px-8 py-4 rounded-lg font-semibold text-white bg-gradient-to-r from-pink-600 via-purple-600 to-blue-600 hover:from-pink-500 hover:via-purple-500 hover:to-blue-500 transition-all transform hover:scale-105 hover:shadow-lg hover:shadow-purple-500/50 active:scale-95"
+              >
+                Login
+              </Link>
+              <Link
+                href="/signup"
+                className="px-8 py-4 rounded-lg font-semibold text-white bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 transition-all transform hover:scale-105 hover:shadow-lg hover:shadow-purple-500/50 active:scale-95"
+              >
+                Sign Up
+              </Link>
+            </div>
+          </div>
+        </section>
+
+        {/* About Section */}
+        <section className="py-16 px-4">
+          <div className="max-w-5xl mx-auto">
+            <h2 className="text-3xl md:text-4xl font-bold text-center mb-12 bg-clip-text text-transparent bg-gradient-to-r from-pink-500 via-purple-400 to-blue-500">
+              Powerful Features
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {/* Feature 1: AI Strategy */}
+              <div className="rounded-2xl p-6 bg-slate-950/70 border border-purple-500/40 hover:border-purple-400 transition-all shadow-lg shadow-purple-900/20">
+                <div className="text-4xl mb-4">🎯</div>
+                <h3 className="text-xl font-semibold text-slate-50 mb-2">AI Strategy</h3>
+                <p className="text-sm text-purple-200/80 leading-relaxed">
+                  Get comprehensive brand strategy, business plans, and market positioning powered by advanced AI.
+                </p>
+              </div>
+
+              {/* Feature 2: Logo Generation */}
+              <div className="rounded-2xl p-6 bg-slate-950/70 border border-purple-500/40 hover:border-purple-400 transition-all shadow-lg shadow-purple-900/20">
+                <div className="text-4xl mb-4">✨</div>
+                <h3 className="text-xl font-semibold text-slate-50 mb-2">Logo Generation</h3>
+                <p className="text-sm text-purple-200/80 leading-relaxed">
+                  Generate multiple professional logo options instantly. Export and customize to match your brand vision.
+                </p>
+              </div>
+
+              {/* Feature 3: Market Insights */}
+              <div className="rounded-2xl p-6 bg-slate-950/70 border border-purple-500/40 hover:border-purple-400 transition-all shadow-lg shadow-purple-900/20">
+                <div className="text-4xl mb-4">📊</div>
+                <h3 className="text-xl font-semibold text-slate-50 mb-2">Market Insights</h3>
+                <p className="text-sm text-purple-200/80 leading-relaxed">
+                  Real-time market analysis, growth predictions, and risk assessments to guide your brand decisions.
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+    );
+  };
+
   // ---------- MAIN RENDER ----------
+
+  // Show loading state while checking auth
+  if (authLoading) {
+    return (
+      <main className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-950 to-slate-900 text-slate-50 flex items-center justify-center">
+        <p className="text-purple-200 text-sm animate-pulse">Loading...</p>
+      </main>
+    );
+  }
+
+  // Show landing page if not authenticated
+  if (!user) {
+    return <LandingSection />;
+  }
 
   return (
     <main className="min-h-screen pb-16 bg-gradient-to-br from-slate-950 via-slate-950 to-slate-900 text-slate-50">
@@ -1299,18 +1607,14 @@ useEffect(() => {
                   { id: "marketing", label: "Marketing" },
                   { id: "content", label: "Content Plan" },
                   { id: "logos", label: "Logos" },
-                  { id: "Brand Future Insights", label: "Brand Future Insights" }, // DISTINCT ID
+                  { id: "future", label: "Brand Future Insights" },
                 ].map((tab) => (
                   <button
                     key={tab.id}
                     onClick={() => {
-                        if (tab.id === "Brand Future Insights") {
-                            router.push("/future"); // REDIRECT HERE
-                        } else {
-                            setActiveTab(
-                                tab.id as "overview" | "marketing" | "content" | "logos"
-                            );
-                        }
+                      setActiveTab(
+                        tab.id as "overview" | "marketing" | "content" | "logos" | "future"
+                      );
                     }}
                     className={`px-4 py-2 rounded-full text-sm font-medium border transition-all ${
                       activeTab === tab.id
@@ -1329,7 +1633,7 @@ useEffect(() => {
                 {activeTab === "marketing" && renderMarketingTab()}
                 {activeTab === "content" && renderContentPlanTab()}
                 {activeTab === "logos" && renderLogosTab()}
-                {/* No content render for Future Insights since it redirects */}
+                {activeTab === "future" && renderBrandFutureInsightsTab()}
               </div>
             </div>
             
