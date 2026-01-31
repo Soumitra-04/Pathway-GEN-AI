@@ -1271,7 +1271,8 @@ useEffect(() => {
                         <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
                       ))}
                     </Pie>
-                    <Tooltip contentStyle={{ backgroundColor: "#020617", border: "1px solid #a855f7", borderRadius: 8 }} />
+                    <Tooltip contentStyle={{ backgroundColor: "#020617", border: "1px solid #a855f7", borderRadius: 8 }} 
+                        itemStyle={{ color: "#FFFFFF" }} />
                   </PieChart>
                 </ResponsiveContainer>
               </div>
@@ -1664,7 +1665,7 @@ useEffect(() => {
         <div className="max-w-5xl mx-auto text-center relative flex justify-center items-center">
           
           <div className="text-center">
-            <h1 className="text-5xl md:text-6xl font-bold mb-3 bg-clip-text text-transparent bg-gradient-to-r from-pink-500 via-purple-400 to-blue-500 drop-shadow-[0_0_20px_rgba(168,85,247,0.65)]">
+            <h1 className="text-x4l md:text-5xl font-extrabold mb-3 bg-clip-text text-transparent bg-gradient-to-r from-pink-500 via-purple-400 to-blue-500 drop-shadow-[0_0_20px_rgba(168,85,247,0.65)] pb-2 leading-tight">
                 Origyn – Brand Generator
             </h1>
             <p className="text-lg md:text-xl text-purple-200 font-light tracking-wide">

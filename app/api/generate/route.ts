@@ -47,6 +47,13 @@ Analyze the MARKET INTELLIGENCE provided above.
 3. **IF Context is neutral/missing:**
    - Set 'growthScore' to 50 (Average).
 
+   ### COMPETITOR NAMING RULES (VERY IMPORTANT):
+- **NEVER use "Competitor A", "Competitor B", or "Company X".**
+- You MUST generate **REALISTIC, EXISTING, or PLAUSIBLE brand names**.
+- Example for Coffee: Use "Starbucks", "Blue Bottle", "Dunkin".
+- Example for Tech: Use "Stripe", "Notion", "Salesforce".
+- If it's a new niche, invent professional names like "Zenith Labs", "EcoFlow", "NovaSystems".
+
 ------------------------------------------------------------
 IMPLEMENTATION INTELLIGENCE MODULE (MANDATORY)
 ------------------------------------------------------------
@@ -121,7 +128,25 @@ JSON to return:
     ],
     "competitorAnalysis": [
       {
-        "competitor": "name",
+        "competitor": "Real Brand Name1",
+        "strength": "string",
+        "weakness": "string",
+        "gapToExploit": "string"
+      },
+      {
+        "competitor": "Real Brand Name2",
+        "strength": "string",
+        "weakness": "string",
+        "gapToExploit": "string"
+      },
+      {
+        "competitor": "Real Brand Name3",
+        "strength": "string",
+        "weakness": "string",
+        "gapToExploit": "string"
+      },
+      {
+        "competitor": "Real Brand Name4",
         "strength": "string",
         "weakness": "string",
         "gapToExploit": "string"
@@ -133,7 +158,7 @@ JSON to return:
     "mitigations": ["practical mitigation steps"]
   },
   "branding": {
-    "nameOptions": ["exactly 5 unique & domain-available names"],
+    "nameOptions": ["Name 1", "Name 2", "Name 3", "Name 4", "Name 5"],
     "taglineOptions": ["exactly 5 catchy taglines"],
     "brandStory": "cinematic emotional narrative in 130–200 words",
     "brandVoice": "how the brand should sound everywhere",
@@ -166,10 +191,27 @@ JSON to return:
       }
     ],
     "socialPosts": [
-      { "platform": "string", "caption": "viral copywriting", "imagePrompt": "AI image prompt" }
+      { "platform": "string", "caption": "viral copywriting", "imagePrompt": "AI image prompt" },
+      { "platform": "string", "caption": "viral copywriting", "imagePrompt": "AI image prompt" },
     ],
     "reelScripts": ["high-hook short video script lines"],
-    "contentPlan15Days": [],
+    "contentPlan15Days": [
+        { "day": 1, "idea": "content idea"},
+        { "day": 2, "idea": "content idea"},
+        { "day": 3, "idea": "content idea"},
+        { "day": 4, "idea": "content idea"},
+        { "day": 5, "idea": "content idea"},
+        { "day": 6, "idea": "content idea"},
+        { "day": 7, "idea": "content idea"},
+        { "day": 8, "idea": "content idea"},
+        { "day": 9, "idea": "content idea"},
+        { "day": 10, "idea": "content idea"},
+        { "day": 11, "idea": "content idea"},
+        { "day": 12, "idea": "content idea"},
+        { "day": 13, "idea": "content idea"},
+        { "day": 14, "idea": "content idea"},
+        { "day": 15, "idea": "content idea"}
+    ],
     "campaignIdeas": ["creative marketing campaigns designed to create buzz"],
     "goToMarketStrategy": "step-by-step approach to launch and capture early adopters"
   },
@@ -218,6 +260,26 @@ JSON to return:
       "minimumInvestmentRequired": "₹X – ₹Y"
     },
     "executionPlan": [
+      {
+        "phase": "Phase name",
+        "duration": "Time range",
+        "actions": ["Concrete execution steps"]
+      },
+      {
+        "phase": "Phase name",
+        "duration": "Time range",
+        "actions": ["Concrete execution steps"]
+      },
+      {
+        "phase": "Phase name",
+        "duration": "Time range",
+        "actions": ["Concrete execution steps"]
+      },
+      {
+        "phase": "Phase name",
+        "duration": "Time range",
+        "actions": ["Concrete execution steps"]
+      },
       {
         "phase": "Phase name",
         "duration": "Time range",
