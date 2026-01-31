@@ -29,6 +29,9 @@ Target Location: <<LOCATION>>
 Funding Stage: <<FUNDING>>
 Business Type: <<BUSINESS_TYPE>>
 Key USP: <<USP>>
+Pricing Strategy: <<PRICING_MODEL>>
+Team Structure: <<TEAM_SIZE>>
+Primary Marketing Channels: <<TARGET_PLATFORMS>>
 
 MARKET INTELLIGENCE (REAL-TIME DATA):
 <<MARKET_CONTEXT>>
@@ -52,6 +55,20 @@ Analyze the MARKET INTELLIGENCE provided above.
 
 3. **IF Context is neutral/missing:**
    - Set 'growthScore' to 50 (Average).
+
+### STRATEGIC ADAPTATION RULES (NEW):
+1. **Pricing Model Adaptation:**
+   - If Strategy is "Subscription", the Financial Plan MUST mention MRR/ARR and Retention.
+   - If Strategy is "High Ticket", the Sales Funnel MUST focus on high-touch consulting or sales calls.
+   - If Strategy is "Freemium", focus on User Acquisition costs vs conversion rates.
+
+2. **Team Size Adaptation:**
+   - If Team is "Solo Founder", the Execution Plan MUST be lean, using automation and outsourcing. Do not suggest hiring big teams immediately.
+   - If Team is "Growth Team", suggest aggressive scaling tactics.
+
+3. **Platform Adaptation:**
+   - ONLY suggest content ideas for the specific "Primary Marketing Channels" provided.
+   - If "TikTok/Reels" is selected, provide video scripts. If "LinkedIn" is selected, provide text posts.
 
 ### COMPETITOR NAMING RULES (VERY IMPORTANT):
 - **NEVER use "Competitor A", "Competitor B", or "Company X".**
@@ -421,7 +438,7 @@ async function callGroqWithFallback(prompt: string) {
       model: "llama-3.3-70b-versatile", // UPDATED TO CURRENT MODEL
       messages: [{ role: "user", content: prompt }],
       temperature: 0.2,
-      max_tokens: 7500,
+      max_tokens: 13000,
     };
     if (useJson) body.response_format = { type: "json_object" };
     
@@ -506,10 +523,14 @@ export async function POST(request: Request) {
       location,
       funding,
       businessType,
-      usp
+      usp,
+      // RECENT ADDITIONS
+      pricingModel,
+      teamSize,
+      targetPlatforms
     } = body;
 
-    console.log("Generating for:", { idea, brandName, location, funding, businessType });
+    console.log("Generating for:", { idea, brandName, location, funding, businessType, pricingModel, teamSize });
 
     if (!idea) return NextResponse.json({ error: "Idea is required" }, { status: 400 });
 
@@ -530,8 +551,13 @@ export async function POST(request: Request) {
     // Apply smart fallbacks
     const safeLocation = location || "India";
     const safeFunding = funding || "Bootstrapped";
-    const safeType = businessType || "Analyze Idea and determine best fit (Product/Service/Hybrid)";
+    const safeType = businessType || "Analyze Idea and determine best fit";
     const safeUSP = usp || "Analyze Idea and extract unique differentiator";
+    
+    // Fallbacks for new fields
+    const safePricing = pricingModel || "Standard market rates";
+    const safeTeam = teamSize || "Founder-led";
+    const safePlatforms = targetPlatforms || "Digital channels";
 
     const finalPrompt = MASTER_PROMPT
       .replaceAll("<<BRAND_NAME>>", brandName || "A new startup")
@@ -543,6 +569,9 @@ export async function POST(request: Request) {
       .replaceAll("<<FUNDING>>", safeFunding)
       .replaceAll("<<BUSINESS_TYPE>>", safeType)
       .replaceAll("<<USP>>", safeUSP)
+      .replaceAll("<<PRICING_MODEL>>", safePricing)
+      .replaceAll("<<TEAM_SIZE>>", safeTeam)
+      .replaceAll("<<TARGET_PLATFORMS>>", safePlatforms)
       .replaceAll("<<MARKET_CONTEXT>>", marketContext);
 
     const groq = await callGroqWithFallback(finalPrompt);
@@ -587,7 +616,10 @@ export async function POST(request: Request) {
             location: safeLocation,
             funding: safeFunding,
             businessType: safeType,
-            usp: safeUSP
+            usp: safeUSP,
+            pricingModel: safePricing,
+            teamSize: safeTeam,
+            targetPlatforms: safePlatforms
           }
         });
         await updateDoc(doc(db, "users", userId), { credits: increment(-1) });
