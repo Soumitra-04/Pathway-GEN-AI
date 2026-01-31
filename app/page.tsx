@@ -1,4 +1,5 @@
 "use client";
+export const dynamic = "force-dynamic";
 import Link from "next/link";
 import React, { useState, useRef, useEffect } from "react";
 import jsPDF from "jspdf";
