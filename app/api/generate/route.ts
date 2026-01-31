@@ -24,6 +24,12 @@ Audience: <<TARGET_AUDIENCE>>
 Tone: <<TONE>>
 Industry: <<INDUSTRY>>
 
+STRATEGIC CONSTRAINTS:
+Target Location: <<LOCATION>>
+Funding Stage: <<FUNDING>>
+Business Type: <<BUSINESS_TYPE>>
+Key USP: <<USP>>
+
 MARKET INTELLIGENCE (REAL-TIME DATA):
 <<MARKET_CONTEXT>>
 
@@ -47,7 +53,7 @@ Analyze the MARKET INTELLIGENCE provided above.
 3. **IF Context is neutral/missing:**
    - Set 'growthScore' to 50 (Average).
 
-   ### COMPETITOR NAMING RULES (VERY IMPORTANT):
+### COMPETITOR NAMING RULES (VERY IMPORTANT):
 - **NEVER use "Competitor A", "Competitor B", or "Company X".**
 - You MUST generate **REALISTIC, EXISTING, or PLAUSIBLE brand names**.
 - Example for Coffee: Use "Starbucks", "Blue Bottle", "Dunkin".
@@ -72,13 +78,21 @@ IMPORTANT CONSTRAINTS:
 - Use cost ranges, not exact numbers.
 - If the business is regulated or restricted, clearly warn the user.
 
-DEFAULT JURISDICTION RULE:
-- If no country or state is explicitly mentioned, assume India.
+JURISDICTION RULE:
+- Base all legal/permit advice on the "Target Location" provided above.
+- If "Target Location" is India, provide Indian laws/costs.
+- If "Target Location" is US/Global, provide Delaware C-Corp/General advice.
+
+FUNDING & TYPE ADJUSTMENTS:
+- If Funding Stage is "Bootstrapped", focus marketing on organic/content and keep setup costs lean.
+- If Funding Stage is "Funded", focus on paid acquisition and scale.
+- If Business Type is "Product", focus on supply chain/inventory.
+- If Business Type is "Service", focus on lead gen/client retention.
 
 IMPLEMENTATION RULES:
 - Legal status MUST match jurisdiction.
 - Regulated industries MUST list permits and authorities.
-- Costs MUST align with early-stage startup benchmarks.
+- Costs MUST align with early-stage startup benchmarks for the given location.
 - Execution roadmap MUST cover Day 0 to Month 6.
 - Feasibility scores MUST be integers between 0 and 100.
 
@@ -192,7 +206,7 @@ JSON to return:
     ],
     "socialPosts": [
       { "platform": "string", "caption": "viral copywriting", "imagePrompt": "AI image prompt" },
-      { "platform": "string", "caption": "viral copywriting", "imagePrompt": "AI image prompt" },
+      { "platform": "string", "caption": "viral copywriting", "imagePrompt": "AI image prompt" }
     ],
     "reelScripts": ["high-hook short video script lines"],
     "contentPlan15Days": [
@@ -404,7 +418,7 @@ async function callGroqWithFallback(prompt: string) {
   
   async function call(useJson: boolean) {
     const body: any = {
-      model: "llama-3.3-70b-versatile", // UPDATED MODEL HERE
+      model: "llama-3.3-70b-versatile", // UPDATED TO CURRENT MODEL
       messages: [{ role: "user", content: prompt }],
       temperature: 0.2,
       max_tokens: 7500,
@@ -481,9 +495,21 @@ async function getPathwayContext(query: string) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { idea, audience, tone, brandName, industry, userId } = body;
+    const { 
+      idea, 
+      audience, 
+      tone, 
+      brandName, 
+      industry, 
+      userId,
+      // New fields from Client
+      location,
+      funding,
+      businessType,
+      usp
+    } = body;
 
-    console.log("Generating for:", { idea, brandName });
+    console.log("Generating for:", { idea, brandName, location, funding, businessType });
 
     if (!idea) return NextResponse.json({ error: "Idea is required" }, { status: 400 });
 
@@ -501,12 +527,22 @@ export async function POST(request: Request) {
 
     const marketContext = await getPathwayContext(idea);
 
+    // Apply smart fallbacks
+    const safeLocation = location || "India";
+    const safeFunding = funding || "Bootstrapped";
+    const safeType = businessType || "Analyze Idea and determine best fit (Product/Service/Hybrid)";
+    const safeUSP = usp || "Analyze Idea and extract unique differentiator";
+
     const finalPrompt = MASTER_PROMPT
       .replaceAll("<<BRAND_NAME>>", brandName || "A new startup")
       .replaceAll("<<IDEA>>", idea)
       .replaceAll("<<TARGET_AUDIENCE>>", audience || "General Public")
       .replaceAll("<<TONE>>", tone || "Professional")
       .replaceAll("<<INDUSTRY>>", industry || "Technology")
+      .replaceAll("<<LOCATION>>", safeLocation)
+      .replaceAll("<<FUNDING>>", safeFunding)
+      .replaceAll("<<BUSINESS_TYPE>>", safeType)
+      .replaceAll("<<USP>>", safeUSP)
       .replaceAll("<<MARKET_CONTEXT>>", marketContext);
 
     const groq = await callGroqWithFallback(finalPrompt);
@@ -543,6 +579,16 @@ export async function POST(request: Request) {
           logoData: logos.images[0] || null,
           createdAt: serverTimestamp(),
           ragContextUsed: marketContext,
+          inputs: {
+            idea,
+            audience,
+            tone,
+            industry,
+            location: safeLocation,
+            funding: safeFunding,
+            businessType: safeType,
+            usp: safeUSP
+          }
         });
         await updateDoc(doc(db, "users", userId), { credits: increment(-1) });
       } catch (e) {

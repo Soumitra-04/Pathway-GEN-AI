@@ -1,7 +1,7 @@
 "use client";
-export const dynamic = "force-dynamic";
+
 import Link from "next/link";
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, Suspense } from "react";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import {
@@ -25,16 +25,18 @@ import { auth } from "@/lib/firebase";
 import { signOut, onAuthStateChanged, User } from "firebase/auth";
 import { useRouter, useSearchParams } from "next/navigation";
 
-
 type ResultType = any;
 
-export default function HomePage() {
+// --- MAIN CONTENT COMPONENT (Internal) ---
+function HomeContent() {
   const router = useRouter();
+  const searchParams = useSearchParams(); // Safe to use here because HomeContent is wrapped in Suspense below
+  
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [showDashboard, setShowDashboard] = useState(false);
 
-  // --- AUTH STATE TRACKING: Track user but don't redirect ---
+  // --- AUTH STATE TRACKING ---
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
@@ -48,18 +50,23 @@ export default function HomePage() {
     try {
       await signOut(auth); // Terminates Firebase session
       setShowDashboard(false); // Return to landing page
-      // User state will be updated by onAuthStateChanged, which will show landing page
     } catch (err: any) {
       console.error("Logout failed:", err.message);
     }
   };
 
-  // Required state variables
+  // --- STATE VARIABLES ---
   const [brandName, setBrandName] = useState("");
   const [idea, setIdea] = useState("");
   const [audience, setAudience] = useState("");
   const [tone, setTone] = useState("");
   const [industry, setIndustry] = useState("");
+
+  // NEW: Advanced Strategy Fields
+  const [location, setLocation] = useState("");
+  const [funding, setFunding] = useState("Bootstrapped (Low Budget)");
+  const [businessType, setBusinessType] = useState("Product (Physical/Digital)");
+  const [usp, setUsp] = useState("");
 
   const [result, setResult] = useState<ResultType | null>(null);
   const [loading, setLoading] = useState(false);
@@ -72,15 +79,14 @@ export default function HomePage() {
 
   // "Multi-page" flow: input page vs results page with tabs
   const [view, setView] = useState<"input" | "results">("input");
-  const searchParams = useSearchParams();
 
-useEffect(() => {
-  const viewParam = searchParams.get("view");
-  if (viewParam === "results" && result) {
-    setView("results");
-    setActiveTab("overview");
-  }
-}, [searchParams]);
+  useEffect(() => {
+    const viewParam = searchParams.get("view");
+    if (viewParam === "results" && result) {
+      setView("results");
+      setActiveTab("overview");
+    }
+  }, [searchParams, result]);
 
   const [activeTab, setActiveTab] = useState<
     "overview" | "marketing" | "content" | "logos" | "future" | "implementation"
@@ -100,10 +106,16 @@ useEffect(() => {
         setAudience(data.audience || "");
         setTone(data.tone || "");
         setIndustry(data.industry || "");
+        
+        // Load new fields
+        setLocation(data.location || "");
+        setFunding(data.funding || "Bootstrapped (Low Budget)");
+        setBusinessType(data.businessType || "Product (Physical/Digital)");
+        setUsp(data.usp || "");
+
         if (data.result) {
           setResult(data.result);
           setHasGenerated(true);
-          
         }
       } catch (e) {
         console.error("Failed to load from localStorage:", e);
@@ -111,10 +123,11 @@ useEffect(() => {
     }
   }, []);
 
-  // Save to localStorage whenever inputs or result change (with a trimmed result)
+  // Save to localStorage
   useEffect(() => {
     if (typeof window === "undefined") return;
 
+    // Save result safely (minify if needed, currently saving full structure)
     const safeResult =
       result && typeof result === "object"
         ? {
@@ -148,6 +161,11 @@ useEffect(() => {
       audience,
       tone,
       industry,
+      // Save new fields
+      location,
+      funding,
+      businessType,
+      usp,
       result: safeResult,
     };
 
@@ -156,9 +174,9 @@ useEffect(() => {
     } catch (err) {
       console.error("Failed to save to localStorage", err);
     }
-  }, [brandName, idea, audience, tone, industry, result]);
+  }, [brandName, idea, audience, tone, industry, location, funding, businessType, usp, result]);
 
-  // Confetti animation (simple CSS-based)
+  // Confetti animation
   const triggerConfetti = () => {
     if (!hasGenerated && result?.logos?.imageUrls?.length > 0) {
       setHasGenerated(true);
@@ -195,12 +213,17 @@ useEffect(() => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          // Standard Fields
           brandName,
           idea,
           audience,
           tone,
           industry,
-  
+          // New Advanced Fields
+          location,
+          funding,
+          businessType,
+          usp
         }),
       });
 
@@ -214,12 +237,11 @@ useEffect(() => {
 
       if (!res.ok) {
         setError(data.error || `Request failed with status ${res.status}`);
-        
       } else {
         setResult(data);
         setView("results");
         setActiveTab("overview");
-        setHasGenerated(true); // ensure "View last result" becomes available
+        setHasGenerated(true);
       }
 
     } catch (err: any) {
@@ -252,7 +274,6 @@ useEffect(() => {
         }),
       });
 
-      // Read once as text, then try JSON
       const text = await res.text();
       let data: any = null;
       try {
@@ -268,7 +289,6 @@ useEffect(() => {
       } else if (!data?.imageUrls || data.imageUrls.length === 0) {
         setError("Stability response did not contain any image data");
       } else {
-        // merge new logos into existing result
         setResult((prev: any) => ({
           ...(prev || {}),
           logos: {
@@ -293,7 +313,6 @@ useEffect(() => {
     setError(null);
 
     try {
-      // Create a temporary container with simplified styles to avoid CSS parsing issues
       const tempContainer = document.createElement("div");
       tempContainer.style.position = "absolute";
       tempContainer.style.left = "-9999px";
@@ -301,27 +320,19 @@ useEffect(() => {
       tempContainer.style.width = logoSectionRef.current.offsetWidth + "px";
       tempContainer.style.backgroundColor = "#0f172a"; // slate-950
 
-      // Clone the logo section
       const cloned = logoSectionRef.current.cloneNode(true) as HTMLElement;
-
-      // Remove any problematic inline styles and apply safe styles
       const allElements = cloned.querySelectorAll("*");
       allElements.forEach((el) => {
         const htmlEl = el as HTMLElement;
         try {
           const computed = window.getComputedStyle(htmlEl);
-          if (
-            computed.backgroundColor &&
-            !computed.backgroundColor.includes("lab")
-          ) {
+          if (computed.backgroundColor && !computed.backgroundColor.includes("lab")) {
             htmlEl.style.backgroundColor = computed.backgroundColor;
           }
           if (computed.color && !computed.color.includes("lab")) {
             htmlEl.style.color = computed.color;
           }
-        } catch {
-          // ignore style computation errors
-        }
+        } catch { }
       });
 
       tempContainer.appendChild(cloned);
@@ -337,50 +348,29 @@ useEffect(() => {
           allEls.forEach((el) => {
             const htmlEl = el as HTMLElement;
             try {
-              const computed =
-                clonedDoc.defaultView?.getComputedStyle(htmlEl);
+              const computed = clonedDoc.defaultView?.getComputedStyle(htmlEl);
               if (computed) {
                 const color = computed.color;
                 const bgColor = computed.backgroundColor;
-
-                if (
-                  color &&
-                  !color.includes("lab") &&
-                  !color.includes("oklab")
-                ) {
+                if (color && !color.includes("lab") && !color.includes("oklab")) {
                   htmlEl.style.color = color;
                 }
-                if (
-                  bgColor &&
-                  !bgColor.includes("lab") &&
-                  !bgColor.includes("oklab")
-                ) {
+                if (bgColor && !bgColor.includes("lab") && !bgColor.includes("oklab")) {
                   htmlEl.style.backgroundColor = bgColor;
                 }
               }
-            } catch {
-              // ignore errors
-            }
+            } catch { }
           });
         },
       });
 
       document.body.removeChild(tempContainer);
-
       const imgData = canvas.toDataURL("image/png");
-
-      const pdf = new jsPDF({
-        orientation: "portrait",
-        unit: "pt",
-        format: "a4",
-      });
-
+      const pdf = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
       const pageWidth = pdf.internal.pageSize.getWidth();
       const pageHeight = pdf.internal.pageSize.getHeight();
-
       const imgWidth = pageWidth - 40;
       const imgHeight = (canvas.height * imgWidth) / canvas.width;
-
       const y = 20;
 
       if (imgHeight > pageHeight - 40) {
@@ -394,18 +384,7 @@ useEffect(() => {
       setTimeout(() => setSuccess(null), 3000);
     } catch (err: any) {
       console.error("PDF generation error:", err);
-      const errorMsg = err?.message || "";
-      if (
-        errorMsg.includes("lab") ||
-        errorMsg.includes("color") ||
-        errorMsg.includes("parse")
-      ) {
-        setError(
-          "PDF generation failed due to CSS compatibility. Try downloading logos individually or refresh the page."
-        );
-      } else {
-        setError("Could not generate PDF. Please try again.");
-      }
+      setError("Could not generate PDF. Please try again.");
     } finally {
       setPdfLoading(false);
     }
@@ -415,18 +394,11 @@ useEffect(() => {
 
   const renderBrandOverviewTab = () => {
     if (!result) return null;
-
-    const strategy =
-      result?.brandStrategy ??
-      result?.brand ??
-      result?.branding ??
-      result?.strategy ??
-      null;
-
+    const strategy = result?.brandStrategy ?? result?.brand ?? result?.branding ?? result?.strategy ?? null;
     const business = result?.business ?? null;
     const branding = result?.branding ?? null;
-
     const hasStrategyData = strategy || business || branding;
+
     if (!hasStrategyData) {
       return (
         <p className="text-sm text-purple-200/70">
@@ -441,10 +413,7 @@ useEffect(() => {
       return (
         <div className="flex flex-wrap gap-2 mt-2">
           {items.map((item, idx) => (
-            <span
-              key={idx}
-              className="px-3 py-1 rounded-full bg-slate-900/70 border border-purple-500/30 text-sm text-purple-100"
-            >
+            <span key={idx} className="px-3 py-1 rounded-full bg-slate-900/70 border border-purple-500/30 text-sm text-purple-100">
               {typeof item === "string" ? item : JSON.stringify(item)}
             </span>
           ))}
@@ -457,9 +426,7 @@ useEffect(() => {
       if (isArray && Array.isArray(value)) {
         return (
           <div className="space-y-1">
-            <div className="text-xs text-purple-300/80 uppercase tracking-wide font-medium">
-              {label}
-            </div>
+            <div className="text-xs text-purple-300/80 uppercase tracking-wide font-medium">{label}</div>
             {renderArray(value)}
           </div>
         );
@@ -467,89 +434,28 @@ useEffect(() => {
       if (typeof value === "string" || typeof value === "number") {
         return (
           <div className="space-y-1">
-            <div className="text-xs text-purple-300/80 uppercase tracking-wide font-medium">
-              {label}
-            </div>
-            <div className="text-slate-100 text-sm leading-relaxed">
-              {value}
-            </div>
+            <div className="text-xs text-purple-300/80 uppercase tracking-wide font-medium">{label}</div>
+            <div className="text-slate-100 text-sm leading-relaxed">{value}</div>
           </div>
         );
       }
       return null;
     };
 
-    const brandNameValue =
-      brandName ||
-      branding?.nameOptions?.[0] ||
-      branding?.name ||
-      strategy?.name ||
-      null;
-
-    const tagline =
-      branding?.taglineOptions?.[0] ||
-      branding?.tagline ||
-      strategy?.tagline ||
-      null;
-
-    const brandDescription =
-      branding?.brandStory ||
-      business?.summary ||
-      strategy?.description ||
-      strategy?.brandStory ||
-      null;
-
-    const brandVoice =
-      branding?.brandVoice || strategy?.brandVoice || tone || null;
-
-    const targetAudience =
-      branding?.targetAudience ||
-      business?.targetAudience ||
-      strategy?.targetAudience ||
-      audience ||
-      null;
-
-    const valueProposition =
-      business?.valueProposition ||
-      strategy?.valueProposition ||
-      strategy?.usp ||
-      null;
-
+    const brandNameValue = brandName || branding?.nameOptions?.[0] || branding?.name || strategy?.name || null;
+    const tagline = branding?.taglineOptions?.[0] || branding?.tagline || strategy?.tagline || null;
+    const brandDescription = branding?.brandStory || business?.summary || strategy?.description || strategy?.brandStory || null;
+    const brandVoice = branding?.brandVoice || strategy?.brandVoice || tone || null;
+    const targetAudience = branding?.targetAudience || business?.targetAudience || strategy?.targetAudience || audience || null;
+    const valueProposition = business?.valueProposition || strategy?.valueProposition || strategy?.usp || null;
     const mission = strategy?.mission || business?.mission || null;
     const vision = strategy?.vision || business?.vision || null;
-
-    const coreValues =
-      strategy?.coreValues ||
-      strategy?.values ||
-      branding?.messagingPillars ||
-      null;
-
-    const colorPalette =
-      branding?.colorPalette || 
-      branding?.visualIdentity?.colorPalette || 
-      strategy?.colorPalette || 
-      strategy?.visualIdentity?.colorPalette ||
-      null;
-
-    const typography =
-      branding?.fontSuggestions || strategy?.typography || null;
-
-    const keywords =
-      strategy?.keywords ||
-      strategy?.tags ||
-      business?.keyWords ||
-      null;
-
-    const marketPositioning =
-      strategy?.marketPositioning ||
-      business?.marketNeed ||
-      strategy?.positioning ||
-      null;
-
-    const industryValue =
-      industry || strategy?.industry || business?.industry || null;
-
-    // --- business plan fields ---
+    const coreValues = strategy?.coreValues || strategy?.values || branding?.messagingPillars || null;
+    const colorPalette = branding?.colorPalette || branding?.visualIdentity?.colorPalette || strategy?.colorPalette || strategy?.visualIdentity?.colorPalette || null;
+    const typography = branding?.fontSuggestions || strategy?.typography || null;
+    const keywords = strategy?.keywords || strategy?.tags || business?.keyWords || null;
+    const marketPositioning = strategy?.marketPositioning || business?.marketNeed || strategy?.positioning || null;
+    const industryValue = industry || strategy?.industry || business?.industry || null;
     const idealCustomerProfile = business?.idealCustomerProfile;
     const painPoints = business?.painPoints;
     const businessModel = business?.businessModel;
@@ -567,18 +473,12 @@ useEffect(() => {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {renderField("Brand Name", brandNameValue)}
           {renderField("Tagline", tagline)}
-
           {brandDescription && (
             <div className="md:col-span-2 space-y-1">
-              <div className="text-xs text-purple-300/80 uppercase tracking-wide font-medium">
-                Brand Description
-              </div>
-              <div className="text-slate-100 text-sm leading-relaxed">
-                {brandDescription}
-              </div>
+              <div className="text-xs text-purple-300/80 uppercase tracking-wide font-medium">Brand Description</div>
+              <div className="text-slate-100 text-sm leading-relaxed">{brandDescription}</div>
             </div>
           )}
-
           {renderField("Brand Voice / Tone", brandVoice)}
           {renderField("Target Audience", targetAudience, true)}
           {renderField("Industry", industryValue)}
@@ -591,42 +491,23 @@ useEffect(() => {
         </div>
 
         {/* Visual identity */}
-        {/* --- ROBUST COLOR PALETTE RENDERER --- */}
         {colorPalette && Array.isArray(colorPalette) && colorPalette.length > 0 && (
           <div className="space-y-3">
-            <div className="text-xs text-purple-300/80 uppercase tracking-wide font-medium">
-              Color Palette
-            </div>
+            <div className="text-xs text-purple-300/80 uppercase tracking-wide font-medium">Color Palette</div>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
               {colorPalette.map((color: any, idx: number) => {
-                // Handle different AI data formats (Object vs String)
                 let hex = color?.hex || color?.color || color?.code || color;
                 let name = color?.name || color?.label || `Color ${idx + 1}`;
                 let usage = color?.usage || color?.description;
-
-                // Ensure Hex is a string and has '#' prefix
                 if (typeof hex !== "string") hex = "#000000";
                 if (!hex.startsWith("#") && /^[0-9A-Fa-f]{6}$/.test(hex)) {
                   hex = "#" + hex;
                 }
-
                 return (
-                  <div
-                    key={idx}
-                    className="group relative rounded-lg p-3 bg-slate-950/80 border border-purple-500/30 hover:border-purple-400 transition-all"
-                  >
-                    <div
-                      className="w-full h-12 rounded-md mb-2 border border-white/10 shadow-inner"
-                      style={{ backgroundColor: hex }}
-                    />
-                    <div className="text-xs font-bold text-slate-100 truncate">
-                      {name}
-                    </div>
-                    <div className="text-[10px] font-mono text-purple-300/70 truncate uppercase">
-                      {hex}
-                    </div>
-                    
-                    {/* Tooltip for Usage */}
+                  <div key={idx} className="group relative rounded-lg p-3 bg-slate-950/80 border border-purple-500/30 hover:border-purple-400 transition-all">
+                    <div className="w-full h-12 rounded-md mb-2 border border-white/10 shadow-inner" style={{ backgroundColor: hex }} />
+                    <div className="text-xs font-bold text-slate-100 truncate">{name}</div>
+                    <div className="text-[10px] font-mono text-purple-300/70 truncate uppercase">{hex}</div>
                     {usage && (
                       <div className="absolute left-0 bottom-full mb-2 w-full opacity-0 group-hover:opacity-100 transition-opacity bg-black/90 text-white text-[10px] p-2 rounded pointer-events-none z-10 border border-purple-500/30">
                         {usage}
@@ -641,27 +522,15 @@ useEffect(() => {
 
         {typography && Array.isArray(typography) && typography.length > 0 && (
           <div className="space-y-3">
-            <div className="text-xs text-purple-300/80 uppercase tracking-wide font-medium">
-              Typography
-            </div>
+            <div className="text-xs text-purple-300/80 uppercase tracking-wide font-medium">Typography</div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {typography.map((font: any, idx: number) => {
                 const role = font?.role || font?.type || "Font";
                 const fontName = font?.font || font?.name || font;
                 return (
-                  <div
-                    key={idx}
-                    className="rounded-lg p-3 bg-slate-950/80 border border-purple-500/30"
-                  >
-                    <div className="text-xs text-purple-300/80 uppercase tracking-wide">
-                      {role}
-                    </div>
-                    <div
-                      className="text-slate-100 font-medium mt-1"
-                      style={{ fontFamily: fontName }}
-                    >
-                      {fontName}
-                    </div>
+                  <div key={idx} className="rounded-lg p-3 bg-slate-950/80 border border-purple-500/30">
+                    <div className="text-xs text-purple-300/80 uppercase tracking-wide">{role}</div>
+                    <div className="text-slate-100 font-medium mt-1" style={{ fontFamily: fontName }}>{fontName}</div>
                   </div>
                 );
               })}
@@ -672,42 +541,23 @@ useEffect(() => {
         {/* Business plan sections */}
         {idealCustomerProfile && (
           <div className="space-y-3">
-            <div className="text-xs text-purple-300/80 uppercase tracking-wide font-medium">
-              Ideal Customer Profile
-            </div>
+            <div className="text-xs text-purple-300/80 uppercase tracking-wide font-medium">Ideal Customer Profile</div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 rounded-xl bg-slate-950/80 border border-purple-500/30 p-4">
-              {renderField(
-                "Age Range",
-                idealCustomerProfile.ageRange || idealCustomerProfile.age
-              )}
+              {renderField("Age Range", idealCustomerProfile.ageRange || idealCustomerProfile.age)}
               {renderField("Location", idealCustomerProfile.location)}
               {renderField("Income Level", idealCustomerProfile.incomeLevel)}
-              {idealCustomerProfile.psychographics &&
-                renderField(
-                  "Psychographics",
-                  idealCustomerProfile.psychographics,
-                  true
-                )}
-              {idealCustomerProfile.buyingMotives &&
-                renderField(
-                  "Buying Motives",
-                  idealCustomerProfile.buyingMotives,
-                  true
-                )}
+              {idealCustomerProfile.psychographics && renderField("Psychographics", idealCustomerProfile.psychographics, true)}
+              {idealCustomerProfile.buyingMotives && renderField("Buying Motives", idealCustomerProfile.buyingMotives, true)}
             </div>
           </div>
         )}
 
         {painPoints && Array.isArray(painPoints) && painPoints.length > 0 && (
           <div className="space-y-2">
-            <div className="text-xs text-purple-300/80 uppercase tracking-wide font-medium">
-              Core Pain Points
-            </div>
+            <div className="text-xs text-purple-300/80 uppercase tracking-wide font-medium">Core Pain Points</div>
             <ul className="list-disc list-inside space-y-1 text-sm text-purple-100">
               {painPoints.map((p: any, idx: number) => (
-                <li key={idx}>
-                  {typeof p === "string" ? p : JSON.stringify(p)}
-                </li>
+                <li key={idx}>{typeof p === "string" ? p : JSON.stringify(p)}</li>
               ))}
             </ul>
           </div>
@@ -715,62 +565,42 @@ useEffect(() => {
 
         {businessModel && (
           <div className="space-y-3">
-            <div className="text-xs text-purple-300/80 uppercase tracking-wide font-medium">
-              Business Model
-            </div>
+            <div className="text-xs text-purple-300/80 uppercase tracking-wide font-medium">Business Model</div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {businessModel.revenueModels && (
                 <div className="rounded-lg p-4 bg-slate-950/80 border border-purple-500/30">
-                  <div className="text-xs text-purple-300/80 uppercase tracking-wide font-medium mb-1">
-                    Revenue Models
-                  </div>
+                  <div className="text-xs text-purple-300/80 uppercase tracking-wide font-medium mb-1">Revenue Models</div>
                   <ul className="list-disc list-inside text-sm text-purple-100 space-y-1">
-                    {businessModel.revenueModels.map(
-                      (r: any, idx: number) => (
-                        <li key={idx}>
-                          {typeof r === "string" ? r : JSON.stringify(r)}
-                        </li>
-                      )
-                    )}
+                    {businessModel.revenueModels.map((r: any, idx: number) => (
+                      <li key={idx}>{typeof r === "string" ? r : JSON.stringify(r)}</li>
+                    ))}
                   </ul>
                 </div>
               )}
               {businessModel.costDrivers && (
                 <div className="rounded-lg p-4 bg-slate-950/80 border border-purple-500/30">
-                  <div className="text-xs text-purple-300/80 uppercase tracking-wide font-medium mb-1">
-                    Cost Drivers
-                  </div>
+                  <div className="text-xs text-purple-300/80 uppercase tracking-wide font-medium mb-1">Cost Drivers</div>
                   <ul className="list-disc list-inside text-sm text-purple-100 space-y-1">
                     {businessModel.costDrivers.map((c: any, idx: number) => (
-                      <li key={idx}>
-                        {typeof c === "string" ? c : JSON.stringify(c)}
-                      </li>
+                      <li key={idx}>{typeof c === "string" ? c : JSON.stringify(c)}</li>
                     ))}
                   </ul>
                 </div>
               )}
               {businessModel.keyPartners && (
                 <div className="rounded-lg p-4 bg-slate-950/80 border border-purple-500/30">
-                  <div className="text-xs text-purple-300/80 uppercase tracking-wide font-medium mb-1">
-                    Key Partners
-                  </div>
+                  <div className="text-xs text-purple-300/80 uppercase tracking-wide font-medium mb-1">Key Partners</div>
                   <ul className="list-disc list-inside text-sm text-purple-100 space-y-1">
                     {businessModel.keyPartners.map((k: any, idx: number) => (
-                      <li key={idx}>
-                        {typeof k === "string" ? k : JSON.stringify(k)}
-                      </li>
+                      <li key={idx}>{typeof k === "string" ? k : JSON.stringify(k)}</li>
                     ))}
                   </ul>
                 </div>
               )}
               {businessModel.scalability && (
                 <div className="rounded-lg p-4 bg-slate-950/80 border border-purple-500/30">
-                  <div className="text-xs text-purple-300/80 uppercase tracking-wide font-medium mb-1">
-                    Scalability
-                  </div>
-                  <p className="text-sm text-slate-100 leading-relaxed">
-                    {businessModel.scalability}
-                  </p>
+                  <div className="text-xs text-purple-300/80 uppercase tracking-wide font-medium mb-1">Scalability</div>
+                  <p className="text-sm text-slate-100 leading-relaxed">{businessModel.scalability}</p>
                 </div>
               )}
             </div>
@@ -779,28 +609,17 @@ useEffect(() => {
         
         {businessModelCanvas && (
           <div className="space-y-3">
-            <div className="text-xs text-purple-300/80 uppercase tracking-wide font-medium">
-              Business Model Canvas
-            </div>
+            <div className="text-xs text-purple-300/80 uppercase tracking-wide font-medium">Business Model Canvas</div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
               {Object.entries(businessModelCanvas).map(([key, value]) => {
                 if (!Array.isArray(value) || value.length === 0) return null;
-                const label = key
-                  .replace(/([A-Z])/g, " $1")
-                  .replace(/^./, (c) => c.toUpperCase());
+                const label = key.replace(/([A-Z])/g, " $1").replace(/^./, (c) => c.toUpperCase());
                 return (
-                  <div
-                    key={key}
-                    className="rounded-lg p-4 bg-slate-950/80 border border-purple-500/30"
-                  >
-                    <div className="text-xs text-purple-300/80 uppercase tracking-wide font-medium mb-1">
-                      {label}
-                    </div>
+                  <div key={key} className="rounded-lg p-4 bg-slate-950/80 border border-purple-500/30">
+                    <div className="text-xs text-purple-300/80 uppercase tracking-wide font-medium mb-1">{label}</div>
                     <ul className="list-disc list-inside text-purple-100 space-y-1">
                       {value.map((v: any, idx: number) => (
-                        <li key={idx}>
-                          {typeof v === "string" ? v : JSON.stringify(v)}
-                        </li>
+                        <li key={idx}>{typeof v === "string" ? v : JSON.stringify(v)}</li>
                       ))}
                     </ul>
                   </div>
@@ -810,82 +629,55 @@ useEffect(() => {
           </div>
         )}
 
-        {valuePropositionChart &&
-          Array.isArray(valuePropositionChart) &&
-          valuePropositionChart.length > 0 && (
-            <div className="space-y-3">
-              <div className="text-xs text-purple-300/80 uppercase tracking-wide font-medium">
-                Value Proposition Chart
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {valuePropositionChart.map((row: any, idx: number) => (
-                  <div
-                    key={idx}
-                    className="rounded-lg p-4 bg-slate-950/80 border border-purple-500/30 text-sm space-y-1"
-                  >
-                    {renderField("Customer Segment", row.customerSegment)}
-                    {renderField("Pain Points", row.painPoints)}
-                    {renderField("Desired Outcome", row.desiredOutcome)}
-                    {renderField("Solution Offered", row.solutionOffered)}
-                    {renderField(
-                      "Competing Solutions",
-                      row.competingSolutions
-                    )}
-                    {renderField("Why We Are Better", row.whyWeAreBetter)}
-                  </div>
-                ))}
-              </div>
+        {valuePropositionChart && Array.isArray(valuePropositionChart) && valuePropositionChart.length > 0 && (
+          <div className="space-y-3">
+            <div className="text-xs text-purple-300/80 uppercase tracking-wide font-medium">Value Proposition Chart</div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {valuePropositionChart.map((row: any, idx: number) => (
+                <div key={idx} className="rounded-lg p-4 bg-slate-950/80 border border-purple-500/30 text-sm space-y-1">
+                  {renderField("Customer Segment", row.customerSegment)}
+                  {renderField("Pain Points", row.painPoints)}
+                  {renderField("Desired Outcome", row.desiredOutcome)}
+                  {renderField("Solution Offered", row.solutionOffered)}
+                  {renderField("Competing Solutions", row.competingSolutions)}
+                  {renderField("Why We Are Better", row.whyWeAreBetter)}
+                </div>
+              ))}
             </div>
-          )}
+          </div>
+        )}
 
-        {competitorAnalysis &&
-          Array.isArray(competitorAnalysis) &&
-          competitorAnalysis.length > 0 && (
-            <div className="space-y-3">
-              <div className="text-xs text-purple-300/80 uppercase tracking-wide font-medium">
-                Competitor Analysis
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                {competitorAnalysis.map((c: any, idx: number) => (
-                  <div
-                    key={idx}
-                    className="rounded-lg p-4 bg-slate-950/80 border border-purple-500/30 space-y-1"
-                  >
-                    {renderField("Competitor", c.competitor)}
-                    {renderField("Strength", c.strength)}
-                    {renderField("Weakness", c.weakness)}
-                    {renderField("Gap To Exploit", c.gapToExploit)}
-                  </div>
-                ))}
-              </div>
+        {competitorAnalysis && Array.isArray(competitorAnalysis) && competitorAnalysis.length > 0 && (
+          <div className="space-y-3">
+            <div className="text-xs text-purple-300/80 uppercase tracking-wide font-medium">Competitor Analysis</div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+              {competitorAnalysis.map((c: any, idx: number) => (
+                <div key={idx} className="rounded-lg p-4 bg-slate-950/80 border border-purple-500/30 space-y-1">
+                  {renderField("Competitor", c.competitor)}
+                  {renderField("Strength", c.strength)}
+                  {renderField("Weakness", c.weakness)}
+                  {renderField("Gap To Exploit", c.gapToExploit)}
+                </div>
+              ))}
             </div>
-          )}
+          </div>
+        )}
 
-        {pricingIdeas &&
-          Array.isArray(pricingIdeas) &&
-          pricingIdeas.length > 0 && (
-            <div className="space-y-2">
-              <div className="text-xs text-purple-300/80 uppercase tracking-wide font-medium">
-                Pricing Ideas
-              </div>
-              <ul className="list-disc list-inside text-sm text-purple-100 space-y-1">
-                {pricingIdeas.map((p: any, idx: number) => (
-                  <li key={idx}>
-                    {typeof p === "string" ? p : JSON.stringify(p)}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+        {pricingIdeas && Array.isArray(pricingIdeas) && pricingIdeas.length > 0 && (
+          <div className="space-y-2">
+            <div className="text-xs text-purple-300/80 uppercase tracking-wide font-medium">Pricing Ideas</div>
+            <ul className="list-disc list-inside text-sm text-purple-100 space-y-1">
+              {pricingIdeas.map((p: any, idx: number) => (
+                <li key={idx}>{typeof p === "string" ? p : JSON.stringify(p)}</li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         {marketNeed && (
           <div className="space-y-2">
-            <div className="text-xs text-purple-300/80 uppercase tracking-wide font-medium">
-              Market Need
-            </div>
-            <p className="text-sm text-slate-100 leading-relaxed">
-              {marketNeed}
-            </p>
+            <div className="text-xs text-purple-300/80 uppercase tracking-wide font-medium">Market Need</div>
+            <p className="text-sm text-slate-100 leading-relaxed">{marketNeed}</p>
           </div>
         )}
 
@@ -893,34 +685,24 @@ useEffect(() => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {risks && Array.isArray(risks) && risks.length > 0 && (
               <div className="space-y-2 rounded-lg p-4 bg-slate-950/80 border border-purple-500/30">
-                <div className="text-xs text-purple-300/80 uppercase tracking-wide font-medium">
-                  Risks
-                </div>
+                <div className="text-xs text-purple-300/80 uppercase tracking-wide font-medium">Risks</div>
                 <ul className="list-disc list-inside text-sm text-purple-100 space-y-1">
                   {risks.map((r: any, idx: number) => (
-                    <li key={idx}>
-                      {typeof r === "string" ? r : JSON.stringify(r)}
-                    </li>
+                    <li key={idx}>{typeof r === "string" ? r : JSON.stringify(r)}</li>
                   ))}
                 </ul>
               </div>
             )}
-            {mitigations &&
-              Array.isArray(mitigations) &&
-              mitigations.length > 0 && (
-                <div className="space-y-2 rounded-lg p-4 bg-slate-950/80 border border-purple-500/30">
-                  <div className="text-xs text-purple-300/80 uppercase tracking-wide font-medium">
-                    Mitigations
-                  </div>
-                  <ul className="list-disc list-inside text-sm text-purple-100 space-y-1">
-                    {mitigations.map((m: any, idx: number) => (
-                      <li key={idx}>
-                        {typeof m === "string" ? m : JSON.stringify(m)}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
+            {mitigations && Array.isArray(mitigations) && mitigations.length > 0 && (
+              <div className="space-y-2 rounded-lg p-4 bg-slate-950/80 border border-purple-500/30">
+                <div className="text-xs text-purple-300/80 uppercase tracking-wide font-medium">Mitigations</div>
+                <ul className="list-disc list-inside text-sm text-purple-100 space-y-1">
+                  {mitigations.map((m: any, idx: number) => (
+                    <li key={idx}>{typeof m === "string" ? m : JSON.stringify(m)}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -944,7 +726,6 @@ useEffect(() => {
 
     return (
       <div className="space-y-6">
-        {/* Hero / Landing Section */}
         {landing && (
           <div className="rounded-xl bg-gradient-to-br from-slate-950/90 via-slate-950/80 to-slate-900/80 border border-purple-500/40 p-5 md:p-6 shadow-lg shadow-purple-900/40">
             <h3 className="text-lg md:text-xl font-semibold text-slate-50 mb-2">
@@ -978,7 +759,6 @@ useEffect(() => {
           </div>
         )}
 
-        {/* Social Posts */}
         {socialPosts && Array.isArray(socialPosts) && socialPosts.length > 0 && (
           <div className="space-y-3">
             <h3 className="text-sm font-semibold text-slate-50 uppercase tracking-wide">
@@ -1008,7 +788,6 @@ useEffect(() => {
           </div>
         )}
 
-        {/* Campaign Ideas */}
         {campaigns && Array.isArray(campaigns) && campaigns.length > 0 && (
           <div className="space-y-3">
             <h3 className="text-sm font-semibold text-slate-50 uppercase tracking-wide">
@@ -1272,8 +1051,7 @@ useEffect(() => {
                         <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
                       ))}
                     </Pie>
-                    <Tooltip contentStyle={{ backgroundColor: "#020617", border: "1px solid #a855f7", borderRadius: 8 }} 
-                        itemStyle={{ color: "#FFFFFF" }} />
+                    <Tooltip contentStyle={{ backgroundColor: "#020617", border: "1px solid #a855f7", borderRadius: 8 }} />
                   </PieChart>
                 </ResponsiveContainer>
               </div>
@@ -1638,235 +1416,196 @@ useEffect(() => {
     );
   };
 
-  // ---------- MAIN RENDER ----------
-
-  // Show loading state while checking auth
-  if (authLoading) {
-    return (
-      <main className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-950 to-slate-900 text-slate-50 flex items-center justify-center">
-        <p className="text-purple-200 text-sm animate-pulse">Loading...</p>
-      </main>
-    );
-  }
-
-  // Always show landing page first, unless user explicitly wants to see dashboard
-  if (!showDashboard) {
-    return <LandingSection />;
-  }
-
-  // Show dashboard only if user is authenticated and showDashboard is true
-  if (!user) {
-    return <LandingSection />;
-  }
+  // --- LOADING / LANDING LOGIC ---
+  if (authLoading) return <div className="min-h-screen flex items-center justify-center bg-slate-950 text-purple-200">Loading...</div>;
+  if (!showDashboard || !user) return <LandingSection />;
 
   return (
     <main className="min-h-screen pb-16 bg-gradient-to-br from-slate-950 via-slate-950 to-slate-900 text-slate-50">
-      {/* Header Section */}
-      <div className="pt-12 pb-8 px-4 animate-fade-up">
-        <div className="max-w-5xl mx-auto text-center relative flex justify-center items-center">
-          
-          <div className="text-center">
-            <h1 className="text-x4l md:text-5xl font-extrabold mb-3 bg-clip-text text-transparent bg-gradient-to-r from-pink-500 via-purple-400 to-blue-500 drop-shadow-[0_0_20px_rgba(168,85,247,0.65)] pb-2 leading-tight">
-                Origyn – Brand Generator
+      <div className="pt-8 px-4 flex justify-between items-center max-w-5xl mx-auto">
+        <div className="text-center">
+            <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-pink-500 via-purple-400 to-blue-500">
+                Origyn
             </h1>
-            <p className="text-lg md:text-xl text-purple-200 font-light tracking-wide">
-                Design brands with AI in 30 seconds
-            </p>
-          </div>
-
-          {/* --- NAVIGATION BUTTONS --- */}
-          <div className="absolute right-0 top-0 flex gap-2">
-            <button 
-              onClick={() => setShowDashboard(false)}
-              className="px-4 py-2 text-sm font-medium text-purple-200 bg-slate-900/50 border border-purple-500/30 rounded-full hover:bg-slate-800 transition-all z-10"
-            >
-              Home
-            </button>
-            <button 
-              onClick={handleLogout}
-              className="px-4 py-2 text-sm font-medium text-purple-200 bg-slate-900/50 border border-purple-500/30 rounded-full hover:bg-red-900/20 hover:text-red-200 transition-all z-10"
-            >
-              Logout
-            </button>
-          </div>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={() => setShowDashboard(false)} className="px-4 py-2 text-sm border border-purple-500/30 rounded-full hover:bg-slate-800 transition-all">Home</button>
+          <button onClick={handleLogout} className="px-4 py-2 text-sm border border-purple-500/30 rounded-full hover:bg-red-900/20">Logout</button>
         </div>
       </div>
 
-      <div className="max-w-5xl mx-auto px-4 space-y-6">
-        {/* Error Display */}
-        {error && (
-          <div className="rounded-xl p-4 border border-red-500/60 bg-red-950/40 shadow-lg shadow-red-900/40 animate-fade-up">
-            <div className="flex items-start justify-between gap-3">
-              <p className="text-red-200 font-medium flex-1">
-                <span className="text-red-300 font-bold">Error:</span> {error}
-              </p>
-              <button
-                onClick={() => setError(null)}
-                className="text-red-300 hover:text-red-100 transition-colors text-xl font-bold leading-none"
-                aria-label="Dismiss error"
-              >
-                ×
-              </button>
-            </div>
-          </div>
-        )}
+      <div className="max-w-5xl mx-auto px-4 mt-8 space-y-6">
+        {error && <div className="p-4 rounded-xl bg-red-950/40 border border-red-500/50 text-red-200 flex justify-between items-center">
+            <span><span className="font-bold">Error:</span> {error}</span>
+            <button onClick={() => setError(null)} className="text-xl font-bold hover:text-red-100">×</button>
+        </div>}
+        {success && <div className="p-4 rounded-xl bg-green-950/40 border border-green-500/50 text-green-200 flex justify-between items-center">
+             <span><span className="font-bold">Success:</span> {success}</span>
+             <button onClick={() => setSuccess(null)} className="text-xl font-bold hover:text-green-100">×</button>
+        </div>}
 
-        {/* Success Display */}
-        {success && (
-          <div className="rounded-xl p-4 border border-green-500/60 bg-green-950/40 shadow-lg shadow-green-900/40 animate-fade-up">
-            <div className="flex items-start justify-between gap-3">
-              <p className="text-green-200 font-medium flex-1">
-                <span className="text-green-300 font-bold">Success:</span>{" "}
-                {success}
-              </p>
-              <button
-                onClick={() => setSuccess(null)}
-                className="text-green-300 hover:text-green-100 transition-colors text-xl font-bold leading-none"
-                aria-label="Dismiss success"
-              >
-                ×
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* INPUT PAGE */}
-        {view === "input" && (
-          <div className="rounded-2xl p-6 md:p-8 animate-fade-up shadow-2xl bg-slate-950/70 border border-purple-500/40">
-            {/* Header row + single 'View last result' button */}
+        {view === "input" ? (
+          <div className="rounded-2xl p-6 md:p-8 bg-slate-950/70 border border-purple-500/40 shadow-2xl animate-fade-up">
             <div className="flex items-center justify-between mb-6 gap-3">
               <div>
-                <h2 className="text-xl md:text-2xl font-semibold text-slate-50">
-                  Enter your brand idea
-                </h2>
-                <p className="text-sm text-purple-200/80 mt-1">
-                  Origyn will generate strategy, marketing, content and
-                  logos in one shot.
-                </p>
+                <h2 className="text-2xl font-semibold mb-1">Enter your brand idea</h2>
+                <p className="text-sm text-purple-200/80">Origyn will generate strategy, marketing, content and logos in one shot.</p>
               </div>
               {hasGenerated && result && (
-                <button
-                  onClick={() => {
-                    setView("results");
-                    setActiveTab("overview");
-                  }}
-                  className="hidden sm:inline-flex items-center px-4 py-2 rounded-full text-xs font-semibold bg-slate-900 border border-purple-500/50 text-purple-100 hover:bg-slate-800"
-                >
+                <button onClick={() => { setView("results"); setActiveTab("overview"); }} className="hidden sm:inline-flex items-center px-4 py-2 rounded-full text-xs font-semibold bg-slate-900 border border-purple-500/50 text-purple-100 hover:bg-slate-800">
                   View last result →
                 </button>
               )}
             </div>
 
             <div className="space-y-5">
-              <input
-                type="text"
-                placeholder="Brand Name (optional)"
-                value={brandName}
-                onChange={(e) => setBrandName(e.target.value)}
-                className="w-full px-4 py-3 rounded-lg bg-black/40 border border-purple-500/40 text-white placeholder-purple-300/60 focus:outline-none focus:border-purple-300 focus:ring-2 focus:ring-purple-500/60 transition-all"
-              />
+              {/* PRIMARY INPUTS */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <input
+                  type="text"
+                  placeholder="Brand Name (optional)"
+                  value={brandName}
+                  onChange={(e) => setBrandName(e.target.value)}
+                  className="w-full px-4 py-3 rounded-lg bg-black/40 border border-purple-500/40 text-white placeholder-purple-300/60 focus:outline-none focus:border-purple-300 focus:ring-2 focus:ring-purple-500/60 transition-all"
+                />
+                <input
+                  type="text"
+                  placeholder="Industry (e.g. Fashion, SaaS)"
+                  value={industry}
+                  onChange={(e) => setIndustry(e.target.value)}
+                  className="w-full px-4 py-3 rounded-lg bg-black/40 border border-purple-500/40 text-white placeholder-purple-300/60 focus:outline-none focus:border-purple-300 focus:ring-2 focus:ring-purple-500/60 transition-all"
+                />
+              </div>
 
               <textarea
-                placeholder="Business Idea"
+                placeholder="Describe your business idea in detail..."
                 value={idea}
                 onChange={(e) => setIdea(e.target.value)}
                 rows={4}
                 className="w-full px-4 py-3 rounded-lg bg-black/40 border border-purple-500/40 text-white placeholder-purple-300/60 focus:outline-none focus:border-purple-300 focus:ring-2 focus:ring-purple-500/60 transition-all resize-none"
               />
 
-              <input
-                type="text"
-                placeholder="Target Audience"
-                value={audience}
-                onChange={(e) => setAudience(e.target.value)}
-                className="w-full px-4 py-3 rounded-lg bg-black/40 border border-purple-500/40 text-white placeholder-purple-300/60 focus:outline-none focus:border-purple-300 focus:ring-2 focus:ring-purple-500/60 transition-all"
-              />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <input
+                  type="text"
+                  placeholder="Target Audience"
+                  value={audience}
+                  onChange={(e) => setAudience(e.target.value)}
+                  className="w-full px-4 py-3 rounded-lg bg-black/40 border border-purple-500/40 text-white placeholder-purple-300/60 focus:outline-none focus:border-purple-300 focus:ring-2 focus:ring-purple-500/60 transition-all"
+                />
+                <input
+                  type="text"
+                  placeholder="Tone (e.g. Luxury, Playful)"
+                  value={tone}
+                  onChange={(e) => setTone(e.target.value)}
+                  className="w-full px-4 py-3 rounded-lg bg-black/40 border border-purple-500/40 text-white placeholder-purple-300/60 focus:outline-none focus:border-purple-300 focus:ring-2 focus:ring-purple-500/60 transition-all"
+                />
+              </div>
 
-              <input
-                type="text"
-                placeholder="Tone (e.g. playful, bold, luxury)"
-                value={tone}
-                onChange={(e) => setTone(e.target.value)}
-                className="w-full px-4 py-3 rounded-lg bg-black/40 border border-purple-500/40 text-white placeholder-purple-300/60 focus:outline-none focus:border-purple-300 focus:ring-2 focus:ring-purple-500/60 transition-all"
-              />
+              {/* NEW ADVANCED FIELDS */}
+              <div className="pt-4 border-t border-purple-500/20">
+                <p className="text-xs text-purple-300 mb-3 font-semibold uppercase tracking-wider">Advanced Strategy Details</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  
+                  {/* Location */}
+                  <div>
+                    <label className="text-xs text-purple-200/70 mb-1 block">Target Market Location</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Mumbai, India or Global"
+                      value={location}
+                      onChange={(e) => setLocation(e.target.value)}
+                      className="w-full px-4 py-3 rounded-lg bg-black/40 border border-purple-500/40 text-white placeholder-purple-300/60 focus:outline-none focus:border-purple-300 focus:ring-2 focus:ring-purple-500/60 transition-all"
+                    />
+                  </div>
 
-              <input
-                type="text"
-                placeholder="Industry"
-                value={industry}
-                onChange={(e) => setIndustry(e.target.value)}
-                className="w-full px-4 py-3 rounded-lg bg-black/40 border border-purple-500/40 text-white placeholder-purple-300/60 focus:outline-none focus:border-purple-300 focus:ring-2 focus:ring-purple-500/60 transition-all"
-              />
-            </div>
+                  {/* USP */}
+                  <div>
+                    <label className="text-xs text-purple-200/70 mb-1 block">Key USP / Differentiator</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. AI-Powered, Eco-Friendly"
+                      value={usp}
+                      onChange={(e) => setUsp(e.target.value)}
+                      className="w-full px-4 py-3 rounded-lg bg-black/40 border border-purple-500/40 text-white placeholder-purple-300/60 focus:outline-none focus:border-purple-300 focus:ring-2 focus:ring-purple-500/60 transition-all"
+                    />
+                  </div>
 
-            {/* Action Buttons */}
-            <div className="flex flex-col sm:flex-row gap-4 mt-6">
-              <button
-                onClick={handleGenerate}
-                disabled={loading || !idea}
-                className="flex-1 px-6 py-4 rounded-lg font-semibold text-white bg-gradient-to-r from-pink-600 via-purple-600 to-blue-600 hover:from-pink-500 hover:via-purple-500 hover:to-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all transform hover:scale-105 hover:shadow-lg hover:shadow-purple-500/50 active:scale-95"
-              >
-                {loading ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-                    Generating...
-                  </span>
-                ) : (
-                  "Generate Brand + Logos"
-                )}
-              </button>
+                  {/* Funding Status */}
+                  <div>
+                    <label className="text-xs text-purple-200/70 mb-1 block">Funding Status</label>
+                    <select
+                      value={funding}
+                      onChange={(e) => setFunding(e.target.value)}
+                      className="w-full px-4 py-3 rounded-lg bg-black/40 border border-purple-500/40 text-white focus:outline-none focus:border-purple-300 focus:ring-2 focus:ring-purple-500/60 transition-all appearance-none bg-slate-900"
+                    >
+                      <option value="Bootstrapped (Low Budget)">Bootstrapped (Low Budget)</option>
+                      <option value="Seeking Investment">Seeking Investment</option>
+                      <option value="Funded (Growth Mode)">Funded (Growth Mode)</option>
+                    </select>
+                  </div>
+
+                  {/* Business Type */}
+                  <div>
+                    <label className="text-xs text-purple-200/70 mb-1 block">Business Type</label>
+                    <select
+                      value={businessType}
+                      onChange={(e) => setBusinessType(e.target.value)}
+                      className="w-full px-4 py-3 rounded-lg bg-black/40 border border-purple-500/40 text-white focus:outline-none focus:border-purple-300 focus:ring-2 focus:ring-purple-500/60 transition-all appearance-none bg-slate-900"
+                    >
+                      <option value="Product (Physical/Digital)">Product (Physical/Digital)</option>
+                      <option value="Service (Agency/Consulting)">Service (Agency/Consulting)</option>
+                      <option value="Hybrid / Marketplace">Hybrid / Marketplace</option>
+                    </select>
+                  </div>
+
+                </div>
+              </div>
+
+              <div className="pt-4 flex flex-col sm:flex-row gap-4">
+                <button
+                  onClick={handleGenerate}
+                  disabled={loading || !idea}
+                  className="w-full px-6 py-4 rounded-lg font-bold text-white bg-gradient-to-r from-pink-600 via-purple-600 to-blue-600 hover:from-pink-500 hover:via-purple-500 hover:to-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all transform hover:scale-105 hover:shadow-lg hover:shadow-purple-500/50 active:scale-95 flex items-center justify-center gap-2"
+                >
+                  {loading ? (
+                     <>
+                       <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                       Generating...
+                     </>
+                  ) : "Generate Brand + Strategy"}
+                </button>
+              </div>
             </div>
           </div>
-        )}
-
-        {/* RESULTS PAGE WITH TABS */}
-        {view === "results" && result && (
+        ) : (
+          /* RESULTS VIEW */
           <div className="space-y-4 animate-fade-up">
-            <div className="flex items-center justify-between gap-3">
-              <button
-                onClick={() => setView("input")}
-                
-                className="inline-flex items-center gap-2 text-sm text-purple-200 hover:text-purple-100 px-3 py-1 rounded-full bg-slate-900/80 border border-purple-500/40"
-              >
-                ← Back to Inputs
+            <div className="flex justify-between items-center gap-3">
+              <button onClick={() => setView("input")} className="inline-flex items-center gap-2 text-sm text-purple-200 hover:text-purple-100 px-3 py-1 rounded-full bg-slate-900/80 border border-purple-500/40 transition-all hover:bg-slate-800">
+                ← Edit Inputs
               </button>
-              <p className="text-xs text-purple-300/80">
-                Generated brand strategy & assets based on your inputs.
-              </p>
+              <div className="text-xs text-purple-300/80">Generated successfully</div>
             </div>
 
-            {/* Tab container */}
             <div className="rounded-2xl p-5 md:p-6 bg-slate-950/70 border border-purple-500/40 shadow-2xl">
-              {/* Tab headers */}
-              <div className="flex flex-wrap gap-2 mb-5">
-                {[
-                  { id: "overview", label: "Overview" },
-                  { id: "marketing", label: "Marketing" },
-                  { id: "content", label: "Content Plan" },
-                  { id: "logos", label: "Logos" },
-                  { id: "future", label: "Brand Future Insights" },
-                  { id: "implementation", label: "Implementation" },
-                ].map((tab) => (
+              <div className="flex flex-wrap gap-2 mb-6 border-b border-purple-500/20 pb-4">
+                {["overview", "marketing", "content", "logos", "future", "implementation"].map((tab) => (
                   <button
-                    key={tab.id}
-                    onClick={() => {
-                      setActiveTab(
-                        tab.id as "overview" | "marketing" | "content" | "logos" | "future" | "implementation"
-                      );
-                    }}
+                    key={tab}
+                    onClick={() => setActiveTab(tab as any)}
                     className={`px-4 py-2 rounded-full text-sm font-medium border transition-all ${
-                      activeTab === tab.id
+                      activeTab === tab
                         ? "bg-gradient-to-r from-pink-600 via-purple-600 to-blue-600 text-white border-transparent shadow-lg shadow-purple-900/50"
                         : "bg-slate-900/80 text-purple-200 border-purple-500/40 hover:bg-slate-800"
                     }`}
                   >
-                    {tab.label}
+                    {tab.charAt(0).toUpperCase() + tab.slice(1)}
                   </button>
                 ))}
               </div>
 
-              {/* Tab content */}
-              <div className="mt-3">
+              <div className="min-h-[400px]">
                 {activeTab === "overview" && renderBrandOverviewTab()}
                 {activeTab === "marketing" && renderMarketingTab()}
                 {activeTab === "content" && renderContentPlanTab()}
@@ -1876,27 +1615,20 @@ useEffect(() => {
               </div>
             </div>
             
-            {/* JSON Debug Viewer - optional dev mode */}
+            {/* DEBUG JSON TOGGLE */}
             <div className="rounded-xl p-4 bg-slate-950/80 border border-purple-500/30">
-              <button
-                onClick={() => setShowJson(!showJson)}
-                className="w-full flex items-center justify-between text-left mb-2 font-semibold text-purple-200 hover:text-purple-100 transition-colors"
-              >
-                <span className="flex items-center gap-2">
-                  <span>Raw JSON Output</span>
-                  <span className="text-xs text-purple-400/70">
-                    (Developer Mode)
-                  </span>
-                </span>
-                <span className="text-2xl transform transition-transform duration-200">
-                  {showJson ? "−" : "+"}
-                </span>
+              <button onClick={() => setShowJson(!showJson)} className="w-full flex items-center justify-between text-left mb-2 font-semibold text-purple-200 hover:text-purple-100 transition-colors">
+                 <span className="flex items-center gap-2">
+                    <span>Raw JSON Output</span>
+                    <span className="text-xs text-purple-400/70">(Developer Mode)</span>
+                 </span>
+                 <span className="text-2xl transform transition-transform duration-200">{showJson ? "−" : "+"}</span>
               </button>
               {showJson && (
                 <div className="mt-3 rounded-lg overflow-hidden">
-                  <pre className="p-4 bg-black/60 rounded-lg overflow-auto max-h-72 text-xs font-mono text-purple-100 border border-purple-500/40">
-                    {JSON.stringify(result, null, 2)}
-                  </pre>
+                    <pre className="p-4 bg-black/60 rounded-lg overflow-auto max-h-72 text-xs font-mono text-purple-100 border border-purple-500/40">
+                      {JSON.stringify(result, null, 2)}
+                    </pre>
                 </div>
               )}
             </div>
@@ -1904,5 +1636,18 @@ useEffect(() => {
         )}
       </div>
     </main>
+  );
+}
+
+// --- DEFAULT EXPORT WITH SUSPENSE ---
+export default function HomePage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-950 to-slate-900 text-slate-50 flex items-center justify-center">
+        <p className="text-purple-200 text-sm animate-pulse">Loading application...</p>
+      </div>
+    }>
+      <HomeContent />
+    </Suspense>
   );
 }
