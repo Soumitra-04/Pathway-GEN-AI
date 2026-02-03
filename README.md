@@ -1,6 +1,21 @@
 # Origyn 🚀 | AI-Powered Brand Strategist
 
+![Project Status](https://img.shields.io/badge/Status-Beta-blue)
+![Tech Stack](https://img.shields.io/badge/Stack-Next.js_|_Python_|_Firebase-black)
+![AI Powered](https://img.shields.io/badge/AI-Groq_&_Stable_Diffusion-purple)
+
 **Origyn** is an end-to-end AI platform that acts as a virtual Chief Marketing Officer (CMO). It takes a simple business idea and instantly generates a comprehensive brand strategy, 15-day content plan, visual identity system, and implementation roadmap using real-time market intelligence.
+
+---
+
+## 📸 Screenshots
+
+| **Dashboard** | **Strategy & Insights** |
+|:---:|:---:|
+| ![Dashboard UI](https://via.placeholder.com/600x350?text=Dashboard+Input+UI) | ![Strategy UI](https://via.placeholder.com/600x350?text=Market+Insights+Graphs) |
+| *Input your idea, funding status, and target market.* | *View real-time growth scores, risks, and revenue models.* |
+
+---
 
 ## ✨ Key Features
 
@@ -26,34 +41,6 @@ Unlike generic text generators, Origyn uses a **RAG (Retrieval-Augmented Generat
 
 ---
 
-## 🛠️ Tech Stack
-
-### **Frontend**
-- **Framework:** [Next.js 14](https://nextjs.org/) (App Router, Server Components)
-- **Styling:** Tailwind CSS + Framer Motion (Animations)
-- **Visualization:** Recharts (Data visualization for market trends)
-- **PDF Generation:** `jspdf` & `html2canvas` for exporting brand kits.
-
-### **Backend & AI**
-- **LLM Engine:** Groq API (Llama 3 70B) for ultra-fast inference.
-- **Image Generation:** Hugging Face Inference API (Stable Diffusion / FLUX).
-- **RAG Engine:** Python (FastAPI) server using **Pathway** for real-time data indexing.
-- **Auth:** Firebase Authentication.
-
----
-
-## 🚀 Getting Started
-
-### Prerequisites
-- Node.js 18+
-- Python 3.10+
-- API Keys for: Groq, Hugging Face, Firebase.
-
-### 1. Clone the Repository
-```bash
-git clone [https://github.com/yourusername/origyn.git](https://github.com/yourusername/origyn.git)
-cd origyn
-
 ## 🧠 How It Works (The Logic)
 
 Origyn operates on a sophisticated pipeline that turns simple text into a complex strategy:
@@ -78,3 +65,34 @@ Origyn operates on a sophisticated pipeline that turns simple text into a comple
 6.  **Visualization:**
     * The frontend parses the JSON response to render interactive Recharts (pie/bar/line graphs).
     * It compiles all assets into a downloadable PDF brand kit using `jspdf`.
+
+---
+
+## 🛠️ Tech Stack
+
+### **Frontend**
+- **Framework:** [Next.js 14](https://nextjs.org/) (App Router, Server Components)
+- **Styling:** Tailwind CSS + Framer Motion (Animations)
+- **Visualization:** Recharts (Data visualization for market trends)
+- **PDF Generation:** `jspdf` & `html2canvas` for exporting brand kits.
+
+### **Backend & AI**
+- **LLM Engine:** Groq API (Llama 3 70B) for ultra-fast inference.
+- **Image Generation:** Hugging Face Inference API (Stable Diffusion / FLUX).
+- **RAG Engine:** Python (FastAPI) server using **Pathway** for real-time data indexing.
+- **Database:** Firebase Firestore (User data & brand history).
+- **Auth:** Firebase Authentication.
+
+---
+
+## 🚀 Getting Started
+
+### Prerequisites
+- Node.js 18+
+- Python 3.10+
+- API Keys for: Groq, Hugging Face, Firebase.
+
+### 1. Clone the Repository
+```bash
+git clone [https://github.com/yourusername/origyn.git](https://github.com/yourusername/origyn.git)
+cd origyn
