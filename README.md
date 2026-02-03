@@ -8,14 +8,6 @@
 
 ---
 
-## 📸 Screenshots
-
-| **Dashboard** | **Strategy & Insights** |
-|:---:|:---:|
-| ![Dashboard UI](https://via.placeholder.com/600x350?text=Dashboard+Input+UI) | ![Strategy UI](https://via.placeholder.com/600x350?text=Market+Insights+Graphs) |
-| *Input your idea, funding status, and target market.* | *View real-time growth scores, risks, and revenue models.* |
-
----
 
 ## ✨ Key Features
 
