@@ -54,13 +54,27 @@ Unlike generic text generators, Origyn uses a **RAG (Retrieval-Augmented Generat
 git clone [https://github.com/yourusername/origyn.git](https://github.com/yourusername/origyn.git)
 cd origyn
 
-How It Works (The Logic):
+## 🧠 How It Works (The Logic)
 
-Input: User provides an idea (e.g., "AI-powered coffee machine"), funding stage, and team size.
-Retrieval: The Python backend searches a live knowledge base for "Coffee tech trends 2024".
-Synthesis: The LLM (Llama 3) receives the user input + the retrieved market trends.
-Refinement:
-        If Team = Solo Founder, the system increases "Execution Risk".
-        If Market = Saturated, the "Growth Score" is capped.
-Generation: The system outputs JSON data for the strategy and prompts Stable Diffusion for logos.
-Visualization: The frontend renders this data into interactive charts and downloadable PDFs
+Origyn operates on a sophisticated pipeline that turns simple text into a complex strategy:
+
+1.  **Input:**
+    * The user provides their core concept (e.g., *"AI-powered coffee machine"*), current funding stage, and team size.
+
+2.  **Retrieval (RAG):**
+    * The Python backend queries a live knowledge base for real-time data (e.g., *"Coffee tech trends 2024"*).
+
+3.  **Synthesis:**
+    * The LLM (Llama 3 via Groq) receives the user's input combined with the retrieved market intelligence.
+
+4.  **Refinement (Logic Gates):**
+    * **Team Analysis:** If `Team Size == Solo Founder`, the system automatically increases the "Execution Risk" score.
+    * **Market Analysis:** If `Market Context == Saturated`, the "Growth Score" is capped to prevent unrealistic projections.
+
+5.  **Generation:**
+    * The system outputs structured JSON for the business strategy.
+    * Simultaneously, it constructs an optimized prompt and sends it to Stable Diffusion to generate logo concepts.
+
+6.  **Visualization:**
+    * The frontend parses the JSON response to render interactive Recharts (pie/bar/line graphs).
+    * It compiles all assets into a downloadable PDF brand kit using `jspdf`.
